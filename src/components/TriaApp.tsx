@@ -399,7 +399,6 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
   const [todayISO] = useState<string>(() => iso(new Date()));
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [toast, setToast] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const toastT = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -429,12 +428,6 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
     const a = document.createElement("a"); a.href = href; a.download = "tria-datos-" + todayISO + ".json"; a.click();
     flash("Exportado");
   }
-  function onImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = () => { try { const data = JSON.parse(String(r.result)); if (data && data.logs) { void api.importData(data); flash("Datos importados"); } else alert("Archivo no válido."); } catch { alert("No se pudo leer el archivo."); } };
-    r.readAsText(f); e.target.value = "";
-  }
   async function logout() { const supabase = createClient(); await supabase.auth.signOut(); router.push("/login"); router.refresh(); }
 
   const sheetSession = openId ? findSession(openId, store) : null;
@@ -448,9 +441,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
           <div className={"syncbadge " + api.sync}><span className="dot" />{SYNC_LABEL[api.sync]}</div>
           <button className="iconbtn" onClick={toggleTheme} title="Cambiar tema" aria-label="Cambiar tema"><Icon name={theme === "dark" ? "sun" : "moon"} /></button>
           <button className="iconbtn" onClick={exportData} title="Exportar datos" aria-label="Exportar datos"><Icon name="down" /></button>
-          <button className="iconbtn" onClick={() => fileRef.current?.click()} title="Importar datos" aria-label="Importar datos"><Icon name="up" /></button>
           <button className="iconbtn" onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión"><Icon name="logout" /></button>
-          <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={onImport} />
         </div>
       </header>
 
