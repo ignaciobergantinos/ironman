@@ -254,6 +254,23 @@ function SessionSheet({ id, s, store, api, onClose }: {
   id: string; s: Session; store: Store; api: ReturnType<typeof useStore>; onClose: () => void;
 }) {
   const [openEx, setOpenEx] = useState<Set<number>>(new Set());
+  const [dragY, setDragY] = useState(0);
+  const drag = useRef({ startY: 0, active: false });
+  const onDragStart = (e: React.PointerEvent) => {
+    drag.current = { startY: e.clientY, active: true };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onDragMove = (e: React.PointerEvent) => {
+    if (!drag.current.active) return;
+    const dy = e.clientY - drag.current.startY;
+    setDragY(dy > 0 ? dy : dy / 5);
+  };
+  const onDragEnd = () => {
+    if (!drag.current.active) return;
+    drag.current.active = false;
+    if (dragY > 110) onClose();
+    else setDragY(0);
+  };
   const l = store.logs[id] || {};
   const d = new Date(s.date + "T00:00:00");
   const dayLabel = `${DOW_LONG[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
@@ -264,8 +281,16 @@ function SessionSheet({ id, s, store, api, onClose }: {
 
   return (
     <div className="overlay open" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sheet">
-        <div className="grab" />
+      <div
+        className="sheet"
+        style={{
+          transform: dragY ? `translateY(${dragY}px)` : undefined,
+          transition: drag.current.active ? "none" : undefined,
+        }}
+      >
+        <div className="grab-zone" onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}>
+          <div className="grab" />
+        </div>
         <div className="sheet-scroll">
           <div className="sheet-hero">
             <span className="sess-ic" style={{ background: DISC[s.disc].color }}><Icon name={s.disc} size={25} /></span>
@@ -276,7 +301,7 @@ function SessionSheet({ id, s, store, api, onClose }: {
                 <span className="itag" style={{ color: INT[s.intensity].c, background: `color-mix(in srgb, ${INT[s.intensity].c} 15%, transparent)` }}>{s.intensity}</span>
               </div>
             </div>
-            <button className={"donebig" + (l.done ? " on" : "")} onClick={() => api.toggleDone(id)}>
+            <button className={"donebig" + (l.done ? " on" : "")} onClick={() => { api.toggleDone(id); onClose(); }}>
               <span className="check"><Icon name="check" size={12} /></span>{l.done ? "Hecho" : "Marcar"}
             </button>
           </div>
