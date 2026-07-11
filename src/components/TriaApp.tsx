@@ -194,7 +194,7 @@ function TodayView({ store, onOpen, onAdd, onDel }: {
           </div>
         ))}
       </div></div></div>
-      <AddExtra dateK={k} onAdd={onAdd} />
+      <div className="fill-bottom"><AddExtra dateK={k} onAdd={onAdd} /></div>
     </>
   );
 }
@@ -315,8 +315,9 @@ function IcuSheet({ a, onClose }: { a: IcuActivity; onClose: () => void }) {
   return (
     <div className="overlay open" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="sheet" style={sheetStyle}>
+        <button className="sheet-close" onClick={onClose} aria-label="Cerrar"><Icon name="x" size={16} /></button>
         <div className="grab-zone" {...dragProps}><div className="grab" /></div>
-        <div className="sheet-scroll">
+        <div className="sheet-scroll" {...dragProps}>
           <div className="sheet-hero">
             <span className="sess-ic" style={{ background: c }}><Icon name={a.disc} size={25} /></span>
             <div style={{ minWidth: 0 }}>
@@ -371,43 +372,63 @@ function ActivityView({ anchor, todayISO }: { anchor: Date; todayISO: string }) 
         <div><h2>Actividad</h2><div className="sub mono">intervals.icu · {acts.length} {acts.length === 1 ? "actividad" : "actividades"}</div></div>
         <button className="today-btn" onClick={refresh}><Icon name="cloud" size={14} /> Actualizar</button>
       </div>
-      {acts.length === 0 && <div className="empty">No hay actividades en intervals.icu.<br />Sincroniza un entreno y pulsa Actualizar.</div>}
-      <div className="feed">
-        {groups.map((g) => (
-          <div className="feed-group" key={g.date}>
-            <div className="feed-date">{feedDateLabel(g.date, todayISO)}</div>
-            <div className="day">{g.items.map((a) => <IcuRow key={a.id} a={a} onOpen={setSel} />)}</div>
+      {acts.length === 0
+        ? <div className="fill-grow"><div className="empty">No hay actividades en intervals.icu.<br />Sincroniza un entreno y pulsa Actualizar.</div></div>
+        : (
+          <div className="feed">
+            {groups.map((g) => (
+              <div className="feed-group" key={g.date}>
+                <div className="feed-date">{feedDateLabel(g.date, todayISO)}</div>
+                <div className="day">{g.items.map((a) => <IcuRow key={a.id} a={a} onOpen={setSel} />)}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
       {sel && <IcuSheet a={sel} onClose={() => setSel(null)} />}
     </>
   );
 }
 
-/* ---------- slide-to-dismiss (pointer events, iOS-safe) ---------- */
+/* ---------- slide-to-dismiss (pointer events, iOS-safe) ----------
+   dragProps se pone en el asa Y en el scroll: si el contenido está arriba del
+   todo y arrastras hacia abajo, cierra; si no, es scroll normal. El ref es la
+   fuente de verdad para que onPointerUp no lea un dragY obsoleto en móvil. */
 function useSheetDrag(onClose: () => void) {
   const [dragY, setDragY] = useState(0);
-  const st = useRef({ startY: 0, active: false, y: 0 });
+  const st = useRef({ startY: 0, active: false, dragging: false, y: 0 });
   const onPointerDown = (e: React.PointerEvent) => {
-    st.current = { startY: e.clientY, active: true, y: 0 };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    st.current = { startY: e.clientY, active: true, dragging: false, y: 0 };
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!st.current.active) return;
-    const dy = e.clientY - st.current.startY;
-    const y = dy > 0 ? dy : dy / 5;
-    st.current.y = y; // ref = fuente de verdad; onPointerUp lee esto (evita closure obsoleto en móvil)
+    const s = st.current;
+    if (!s.active) return;
+    const dy = e.clientY - s.startY;
+    if (!s.dragging) {
+      const el = e.currentTarget as HTMLElement;
+      const atTop = (el.scrollTop || 0) <= 0;
+      if (dy > 5 && atTop) {
+        s.dragging = true;
+        try { el.setPointerCapture(e.pointerId); } catch { /* noop */ }
+      } else if (dy < -3 || (el.scrollTop || 0) > 0) {
+        s.active = false; // es scroll de contenido, no un cierre
+        return;
+      } else return;
+    }
+    const y = dy > 0 ? dy : 0;
+    s.y = y;
     setDragY(y);
   };
   const end = () => {
-    if (!st.current.active) return;
-    st.current.active = false;
-    if (st.current.y > 90) onClose();
+    const s = st.current;
+    if (!s.active) return;
+    s.active = false;
+    const closing = s.dragging && s.y > 90;
+    s.dragging = false;
+    if (closing) onClose();
     else setDragY(0);
   };
   const dragProps = { onPointerDown, onPointerMove, onPointerUp: end, onPointerCancel: end };
-  const sheetStyle: React.CSSProperties = { transform: dragY ? `translateY(${dragY}px)` : undefined, transition: st.current.active ? "none" : undefined };
+  const sheetStyle: React.CSSProperties = { transform: dragY ? `translateY(${dragY}px)` : undefined, transition: dragY ? "none" : undefined };
   return { dragProps, sheetStyle };
 }
 
@@ -443,10 +464,11 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
   return (
     <div className="overlay open" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="sheet" style={sheetStyle}>
+        <button className="sheet-close" onClick={onClose} aria-label="Cerrar"><Icon name="x" size={16} /></button>
         <div className="grab-zone" {...dragProps}>
           <div className="grab" />
         </div>
-        <div className="sheet-scroll">
+        <div className="sheet-scroll" {...dragProps}>
           <div className="sheet-hero">
             <span className="sess-ic" style={{ ["--sc"]: DISC[s.disc].color } as React.CSSProperties}><Icon name={s.disc} size={25} /></span>
             <div style={{ minWidth: 0 }}>
@@ -639,7 +661,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
         </div>
       </header>
 
-      <main className="wrap">
+      <main className={"wrap" + (view === "today" || view === "activity" ? " fill" : "")}>
         {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "today" && <TodayView store={store} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} />}
