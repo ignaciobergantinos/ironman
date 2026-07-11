@@ -41,9 +41,10 @@ const POLL_MS = 10 * 60 * 1000; // refresca cada 10 min mientras la app está ab
 function useIcuActivities(oldest: string, newest: string): [IcuActivity[], () => void] {
   const [acts, setActs] = useState<IcuActivity[]>([]);
 
-  const fetchRange = useCallback(async (signal?: AbortSignal) => {
+  const fetchRange = useCallback(async (opts?: { signal?: AbortSignal; force?: boolean }) => {
     try {
-      const r = await fetch(`/api/intervals?oldest=${oldest}&newest=${newest}`, { signal });
+      const q = `/api/intervals?oldest=${oldest}&newest=${newest}` + (opts?.force ? "&force=1" : "");
+      const r = await fetch(q, { signal: opts?.signal });
       if (!r.ok) return;
       const d = (await r.json()) as IcuActivity[];
       if (Array.isArray(d)) setActs(d);
@@ -54,7 +55,7 @@ function useIcuActivities(oldest: string, newest: string): [IcuActivity[], () =>
 
   useEffect(() => {
     const ctrl = new AbortController();
-    void fetchRange(ctrl.signal);
+    void fetchRange({ signal: ctrl.signal });
     const iv = setInterval(() => void fetchRange(), POLL_MS);
     const onFocus = () => void fetchRange();
     window.addEventListener("focus", onFocus);
@@ -65,7 +66,7 @@ function useIcuActivities(oldest: string, newest: string): [IcuActivity[], () =>
     };
   }, [fetchRange]);
 
-  const refresh = useCallback(() => void fetchRange(), [fetchRange]);
+  const refresh = useCallback(() => void fetchRange({ force: true }), [fetchRange]);
   return [acts, refresh];
 }
 

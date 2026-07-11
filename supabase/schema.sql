@@ -35,6 +35,36 @@ create policy "own rows: delete" on public.training_entries
 alter publication supabase_realtime add table public.training_entries;
 
 -- ---------------------------------------------------------------------------
+-- Caché de actividades de intervals.icu: se guardan en la BD para no llamar a
+-- la API de intervals.icu en cada carga (solo se refresca cuando está caducada).
+create table if not exists public.intervals_activities (
+  user_id     uuid        not null default auth.uid() references auth.users on delete cascade,
+  activity_id text        not null,
+  date        date        not null,
+  data        jsonb       not null default '{}'::jsonb,
+  synced_at   timestamptz not null default now(),
+  primary key (user_id, activity_id)
+);
+create index if not exists intervals_activities_date_idx
+  on public.intervals_activities (user_id, date);
+
+alter table public.intervals_activities enable row level security;
+
+drop policy if exists "icu: select" on public.intervals_activities;
+drop policy if exists "icu: insert" on public.intervals_activities;
+drop policy if exists "icu: update" on public.intervals_activities;
+drop policy if exists "icu: delete" on public.intervals_activities;
+
+create policy "icu: select" on public.intervals_activities
+  for select using (auth.uid() = user_id);
+create policy "icu: insert" on public.intervals_activities
+  for insert with check (auth.uid() = user_id);
+create policy "icu: update" on public.intervals_activities
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "icu: delete" on public.intervals_activities
+  for delete using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
 -- Fotos de las sesiones (Supabase Storage).
 -- Bucket privado; cada usuario solo accede a su propia carpeta ({user_id}/...).
 -- Las fotos se reducen a ~1280px/JPEG antes de subir para ocupar poco espacio.

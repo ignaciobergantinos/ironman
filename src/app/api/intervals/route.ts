@@ -45,6 +45,43 @@ type IcuRaw = {
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TTL_MS = 10 * 60 * 1000; // 10 min: dentro de esta ventana se sirve desde la BD
+
+function mapActivity(a: IcuRaw) {
+  const disc = toDisc(a.type);
+  if (!disc) return null;
+  return {
+    id: a.id,
+    date: a.start_date_local.slice(0, 10),
+    startLocal: a.start_date_local,
+    disc,
+    type: a.type,
+    name: a.name ?? null,
+    distM: a.distance ?? null,
+    movingS: a.moving_time ?? null,
+    elapsedS: a.elapsed_time ?? null,
+    hr: a.average_heartrate ?? null,
+    hrMax: a.max_heartrate ?? null,
+    power: a.icu_average_watts ?? a.average_watts ?? null,
+    powerNp: a.icu_weighted_avg_watts ?? null,
+    powerMax: a.max_watts ?? null,
+    cad: a.average_cadence ?? null,
+    cadMax: a.max_cadence ?? null,
+    speedAvg: a.average_speed ?? null,
+    speedMax: a.max_speed ?? null,
+    elevGain: a.total_elevation_gain ?? null,
+    calories: a.calories ?? null,
+    load: a.icu_training_load ?? null,
+    intensity: a.icu_intensity ?? null,
+    hrZones: a.icu_hr_zones ?? null,
+    hrZoneTimes: a.icu_hr_zone_times ?? null,
+    feel: a.feel ?? null,
+    rpe: a.icu_rpe ?? null,
+    device: a.device_name ?? null,
+    source: a.source ?? null,
+    trainer: a.trainer ?? null,
+  };
+}
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -61,51 +98,43 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "bad-range" }, { status: 400 });
   }
 
+  const force = searchParams.get("force") === "1";
+
+  // 1) Sirve desde la caché de la BD si sigue fresca (evita llamar a intervals.icu).
+  const { data: cached } = await supabase
+    .from("intervals_activities")
+    .select("data, synced_at")
+    .eq("user_id", user.id)
+    .gte("date", oldest)
+    .lte("date", newest);
+  const freshest = (cached || []).reduce((m, r) => Math.max(m, Date.parse(r.synced_at)), 0);
+  const stale = !freshest || Date.now() - freshest > TTL_MS;
+  if (!force && cached && cached.length > 0 && !stale) {
+    return NextResponse.json(cached.map((r) => r.data));
+  }
+
+  // 2) Caché caducada (o refresco manual): trae de intervals.icu y persiste.
   const athlete = process.env.INTERVALS_ATHLETE_ID || "0";
   const url = `https://intervals.icu/api/v1/athlete/${athlete}/activities?oldest=${oldest}&newest=${newest}`;
   const auth = "Basic " + Buffer.from(`API_KEY:${key}`).toString("base64");
 
   const res = await fetch(url, { headers: { Authorization: auth }, cache: "no-store" });
-  if (!res.ok) return NextResponse.json({ error: "intervals-error", status: res.status }, { status: 502 });
+  if (!res.ok) {
+    // intervals.icu caído: devuelve lo cacheado (aunque esté algo viejo) en vez de fallar.
+    if (cached && cached.length > 0) return NextResponse.json(cached.map((r) => r.data));
+    return NextResponse.json({ error: "intervals-error", status: res.status }, { status: 502 });
+  }
 
   const raw = (await res.json()) as IcuRaw[];
-  const acts = raw
-    .map((a) => {
-      const disc = toDisc(a.type);
-      if (!disc) return null;
-      return {
-        id: a.id,
-        date: a.start_date_local.slice(0, 10),
-        startLocal: a.start_date_local,
-        disc,
-        type: a.type,
-        name: a.name ?? null,
-        distM: a.distance ?? null,
-        movingS: a.moving_time ?? null,
-        elapsedS: a.elapsed_time ?? null,
-        hr: a.average_heartrate ?? null,
-        hrMax: a.max_heartrate ?? null,
-        power: a.icu_average_watts ?? a.average_watts ?? null,
-        powerNp: a.icu_weighted_avg_watts ?? null,
-        powerMax: a.max_watts ?? null,
-        cad: a.average_cadence ?? null,
-        cadMax: a.max_cadence ?? null,
-        speedAvg: a.average_speed ?? null,
-        speedMax: a.max_speed ?? null,
-        elevGain: a.total_elevation_gain ?? null,
-        calories: a.calories ?? null,
-        load: a.icu_training_load ?? null,
-        intensity: a.icu_intensity ?? null,
-        hrZones: a.icu_hr_zones ?? null,
-        hrZoneTimes: a.icu_hr_zone_times ?? null,
-        feel: a.feel ?? null,
-        rpe: a.icu_rpe ?? null,
-        device: a.device_name ?? null,
-        source: a.source ?? null,
-        trainer: a.trainer ?? null,
-      };
-    })
-    .filter(Boolean);
+  const acts = raw.map(mapActivity).filter((a): a is NonNullable<typeof a> => a !== null);
+
+  const syncedAt = new Date().toISOString();
+  const rows = acts.map((a) => ({ user_id: user.id, activity_id: a.id, date: a.date, data: a, synced_at: syncedAt }));
+  if (rows.length) await supabase.from("intervals_activities").upsert(rows, { onConflict: "user_id,activity_id" });
+  // Poda las que se borraron en intervals.icu dentro del rango.
+  let del = supabase.from("intervals_activities").delete().eq("user_id", user.id).gte("date", oldest).lte("date", newest);
+  if (acts.length) del = del.not("activity_id", "in", `(${acts.map((a) => `"${a.id}"`).join(",")})`);
+  await del;
 
   return NextResponse.json(acts);
 }

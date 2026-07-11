@@ -299,6 +299,7 @@ function icuDetail(a: IcuActivity): { l: string; v: string; u: string }[] {
   return rows;
 }
 function IcuSheet({ a, onClose }: { a: IcuActivity; onClose: () => void }) {
+  const { dragProps, sheetStyle } = useSheetDrag(onClose);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -313,8 +314,8 @@ function IcuSheet({ a, onClose }: { a: IcuActivity; onClose: () => void }) {
   const c = DISC[a.disc].color;
   return (
     <div className="overlay open" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sheet">
-        <div className="grab-zone" onClick={onClose}><div className="grab" /></div>
+      <div className="sheet" style={sheetStyle}>
+        <div className="grab-zone" {...dragProps}><div className="grab" /></div>
         <div className="sheet-scroll">
           <div className="sheet-hero">
             <span className="sess-ic" style={{ background: c }}><Icon name={a.disc} size={25} /></span>
@@ -384,32 +385,43 @@ function ActivityView({ anchor, todayISO }: { anchor: Date; todayISO: string }) 
   );
 }
 
+/* ---------- slide-to-dismiss (pointer events, iOS-safe) ---------- */
+function useSheetDrag(onClose: () => void) {
+  const [dragY, setDragY] = useState(0);
+  const st = useRef({ startY: 0, active: false, y: 0 });
+  const onPointerDown = (e: React.PointerEvent) => {
+    st.current = { startY: e.clientY, active: true, y: 0 };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!st.current.active) return;
+    const dy = e.clientY - st.current.startY;
+    const y = dy > 0 ? dy : dy / 5;
+    st.current.y = y; // ref = fuente de verdad; onPointerUp lee esto (evita closure obsoleto en móvil)
+    setDragY(y);
+  };
+  const end = () => {
+    if (!st.current.active) return;
+    st.current.active = false;
+    if (st.current.y > 90) onClose();
+    else setDragY(0);
+  };
+  const dragProps = { onPointerDown, onPointerMove, onPointerUp: end, onPointerCancel: end };
+  const sheetStyle: React.CSSProperties = { transform: dragY ? `translateY(${dragY}px)` : undefined, transition: st.current.active ? "none" : undefined };
+  return { dragProps, sheetStyle };
+}
+
 /* ---------- session sheet ---------- */
 function SessionSheet({ id, s, store, api, act, onClose }: {
   id: string; s: Session; store: Store; api: ReturnType<typeof useStore>; act: IcuActivity | null; onClose: () => void;
 }) {
   const [openEx, setOpenEx] = useState<Set<number>>(new Set());
-  const [dragY, setDragY] = useState(0);
-  const drag = useRef({ startY: 0, active: false });
-  const onDragStart = (e: React.PointerEvent) => {
-    drag.current = { startY: e.clientY, active: true };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-  const onDragMove = (e: React.PointerEvent) => {
-    if (!drag.current.active) return;
-    const dy = e.clientY - drag.current.startY;
-    setDragY(dy > 0 ? dy : dy / 5);
-  };
-  const onDragEnd = () => {
-    if (!drag.current.active) return;
-    drag.current.active = false;
-    if (dragY > 110) onClose();
-    else setDragY(0);
-  };
+  const { dragProps, sheetStyle } = useSheetDrag(onClose);
   const l = store.logs[id] || {};
   const photos = l.photos || [];
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const photoKey = photos.join(",");
   useEffect(() => {
     let alive = true;
@@ -430,14 +442,8 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
 
   return (
     <div className="overlay open" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div
-        className="sheet"
-        style={{
-          transform: dragY ? `translateY(${dragY}px)` : undefined,
-          transition: drag.current.active ? "none" : undefined,
-        }}
-      >
-        <div className="grab-zone" onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}>
+      <div className="sheet" style={sheetStyle}>
+        <div className="grab-zone" {...dragProps}>
           <div className="grab" />
         </div>
         <div className="sheet-scroll">
@@ -545,7 +551,9 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
             <div className="photo-grid">
               {photos.map((p) => (
                 <div className="photo" key={p}>
-                  {photoUrls[p] ? <img src={photoUrls[p]} alt="Foto de la sesión" /> : <div className="photo-ph" />}
+                  {photoUrls[p]
+                    ? <img src={photoUrls[p]} alt="Foto de la sesión" onClick={() => setLightbox(photoUrls[p])} />
+                    : <div className="photo-ph" />}
                   <button className="photo-del" onClick={() => api.removePhoto(id, p)} aria-label="Eliminar foto"><Icon name="x" size={13} /></button>
                 </div>
               ))}
@@ -559,6 +567,12 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
           {s.kind === "extra" && <button className="danger" onClick={() => { api.delExtra(id, s.date); onClose(); }}>Eliminar esta sesión extra</button>}
         </div>
       </div>
+      {lightbox && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="Foto de la sesión" />
+          <button className="lightbox-close" onClick={() => setLightbox(null)} aria-label="Cerrar"><Icon name="x" size={18} /></button>
+        </div>
+      )}
     </div>
   );
 }
