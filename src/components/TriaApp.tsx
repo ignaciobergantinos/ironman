@@ -138,7 +138,7 @@ function WeekView({ cursor, setCursor, store, todayISO, activities, onOpen, onOp
     <>
       <div className="weeknav">
         <button className="navbtn" onClick={() => setCursor(addDays(cursor, -7))} aria-label="Semana anterior"><Icon name="left" size={16} /></button>
-        <div><h2>{title}</h2><div className="sub mono">Semana {wm.num}/{wm.total} · {wm.phase}{wm.recovery ? " 🌙" : ""}</div></div>
+        <div><h2>{title}</h2><div className="sub mono">{wm ? `Semana ${wm.num}/${wm.total} · ${wm.phase}${wm.recovery ? " 🌙" : ""}` : "Fuera del plan"}</div></div>
         <button className="navbtn" onClick={() => setCursor(addDays(cursor, 7))} aria-label="Semana siguiente"><Icon name="right" size={16} /></button>
         <button className="today-btn" onClick={() => setCursor(mondayOf(new Date()))}>Hoy</button>
       </div>

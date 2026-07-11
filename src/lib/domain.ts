@@ -210,17 +210,21 @@ function buildWeek(p: WeekParams): Record<number, DayDef> {
 
 const BUILT = PLAN.map(buildWeek);
 
-export function planWeekIndex(d: Date): number {
+// Semana del plan (0..5) o null si la fecha cae fuera del bloque de 6 semanas.
+export function planWeekIndex(d: Date): number | null {
   const start = mondayOf(PLAN_START).getTime();
   const mon = mondayOf(d).getTime();
   const wk = Math.floor(Math.round((mon - start) / 86400000) / 7);
-  return ((wk % PLAN.length) + PLAN.length) % PLAN.length;
+  return wk >= 0 && wk < PLAN.length ? wk : null;
 }
 export function dayDef(d: Date): DayDef {
-  return BUILT[planWeekIndex(d)][d.getDay()];
-}
-export function weekMeta(d: Date): { num: number; total: number; phase: string; recovery: boolean } {
   const i = planWeekIndex(d);
+  if (i == null) return { dow: d.getDay(), day: DOW_LONG[d.getDay()], rest: true, sessions: [] };
+  return BUILT[i][d.getDay()];
+}
+export function weekMeta(d: Date): { num: number; total: number; phase: string; recovery: boolean } | null {
+  const i = planWeekIndex(d);
+  if (i == null) return null;
   return { num: i + 1, total: PLAN.length, phase: PLAN[i].phase, recovery: !!PLAN[i].recovery };
 }
 
