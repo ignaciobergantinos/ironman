@@ -70,14 +70,20 @@ function useIcuActivities(oldest: string, newest: string): [IcuActivity[], () =>
   return [acts, refresh];
 }
 
-// Empareja las sesiones de la semana con actividades reales por fecha + disciplina.
+// Actividades de la semana + emparejador por fecha/disciplina.
 export function useIntervals(weekStart: Date) {
-  const [acts] = useIcuActivities(iso(weekStart), iso(addDays(weekStart, 6)));
-  return useCallback(
+  const [activities] = useIcuActivities(iso(weekStart), iso(addDays(weekStart, 6)));
+  const match = useCallback(
     (dateISO: string, disc: Discipline): IcuActivity | null =>
-      acts.find((a) => a.date === dateISO && a.disc === disc) ?? null,
-    [acts],
+      activities.find((a) => a.date === dateISO && a.disc === disc) ?? null,
+    [activities],
   );
+  return { activities, match };
+}
+
+// Actividades de intervals.icu de ese día que NO corresponden a ninguna sesión planificada.
+export function icuExtrasFor(activities: IcuActivity[], dateISO: string, plannedDiscs: Discipline[]): IcuActivity[] {
+  return activities.filter((a) => a.date === dateISO && !plannedDiscs.includes(a.disc));
 }
 
 // Lista de actividades de intervals.icu (para el feed), más recientes primero, con refresco manual.

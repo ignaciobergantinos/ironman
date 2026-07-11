@@ -3,17 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useStore, type Store } from "@/lib/store";
-import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
+import { useIntervals, useIntervalsFeed, icuExtrasFor, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
 import {
-  DISC, INT, ROUTINES, FIELDS, WEEK, byDow, DOW_LONG, MONTHS,
+  DISC, INT, ROUTINES, FIELDS, dayDef, weekMeta, DOW_LONG, MONTHS,
   iso, mondayOf, addDays, fmtDate, derive,
   type Discipline, type Session, type LogData,
 } from "@/lib/domain";
 
 /* ---------- pure helpers ---------- */
 function templSessions(date: Date): Session[] {
-  const def = byDow[date.getDay()];
+  const def = dayDef(date);
   return (def ? def.sessions : []).map((s) => ({ ...s, id: iso(date) + ":" + s.slot, kind: "templ" as const, date: iso(date) }));
 }
 function extraSessions(date: Date, store: Store): Session[] {
@@ -99,10 +99,26 @@ function AddExtra({ dateK, onAdd }: { dateK: string; onAdd: (disc: Discipline, d
   );
 }
 
+/* ---------- fila de actividad de intervals.icu sin sesión planificada (extra) ---------- */
+function IcuSlotRow({ a, onOpen }: { a: IcuActivity; onOpen: (a: IcuActivity) => void }) {
+  const stats = icuStats(a);
+  const sub = stats.slice(0, 2).map((s) => (s.u ? `${s.v} ${s.u}` : s.v)).join(" · ") || a.type;
+  return (
+    <button className="sess" onClick={() => onOpen(a)}>
+      <span className="sess-ic" style={{ ["--sc"]: DISC[a.disc].color } as React.CSSProperties}><Icon name={a.disc} size={19} /></span>
+      <span className="sess-main">
+        <span className="sess-name">{a.name ?? DISC[a.disc].label}</span>
+        <span className="sess-sub"><span className="idot" style={{ background: DISC[a.disc].color }} />intervals.icu · {sub}</span>
+      </span>
+      <span className="ico-chev"><Icon name="chev" size={16} /></span>
+    </button>
+  );
+}
+
 /* ---------- week view ---------- */
-function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel }: {
-  cursor: Date; setCursor: (d: Date) => void; store: Store; todayISO: string;
-  onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
+function WeekView({ cursor, setCursor, store, todayISO, activities, onOpen, onOpenAct, onAdd, onDel }: {
+  cursor: Date; setCursor: (d: Date) => void; store: Store; todayISO: string; activities: IcuActivity[];
+  onOpen: (id: string) => void; onOpenAct: (a: IcuActivity) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
 }) {
   const start = cursor, end = addDays(start, 6);
   const sameMonth = start.getMonth() === end.getMonth();
@@ -117,11 +133,12 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel }: 
     mini.push({ n: ss.length, done: dd });
   }
   const pct = total ? Math.round((done / total) * 100) : 0;
+  const wm = weekMeta(start);
   return (
     <>
       <div className="weeknav">
         <button className="navbtn" onClick={() => setCursor(addDays(cursor, -7))} aria-label="Semana anterior"><Icon name="left" size={16} /></button>
-        <div><h2>{title}</h2><div className="sub mono">Semana de entreno</div></div>
+        <div><h2>{title}</h2><div className="sub mono">Semana {wm.num}/{wm.total} · {wm.phase}{wm.recovery ? " 🌙" : ""}</div></div>
         <button className="navbtn" onClick={() => setCursor(addDays(cursor, 7))} aria-label="Semana siguiente"><Icon name="right" size={16} /></button>
         <button className="today-btn" onClick={() => setCursor(mondayOf(new Date()))}>Hoy</button>
       </div>
@@ -132,13 +149,14 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel }: 
       </div>
       <div className="days">
         {Array.from({ length: 7 }).map((_, i) => {
-          const d = addDays(start, i), k = iso(d), def = byDow[d.getDay()];
+          const d = addDays(start, i), k = iso(d), def = dayDef(d);
           const isToday = k === todayISO;
           const templ = templSessions(d), extra = extraSessions(d, store);
+          const icuExtras = icuExtrasFor(activities, k, [...templ, ...extra].map((s) => s.disc));
           return (
             <div key={k} className={"day" + (isToday ? " today" : "")}>
               <div className="day-h"><span className="dow">{def.day}</span><span className="date">{fmtDate(d)}</span>{isToday && <span className="todaypill">Hoy</span>}</div>
-              {def.rest && templ.length === 0 && extra.length === 0 && (
+              {def.rest && templ.length === 0 && extra.length === 0 && icuExtras.length === 0 && (
                 <div className="restnote">Descanso o recuperación activa. Puedes añadir una caminata o nado suave.</div>
               )}
               {!def.rest && (
@@ -160,6 +178,11 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel }: 
                   <button className="exdel" onClick={() => onDel(s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>
                 </div>
               ))}
+              {icuExtras.map((a) => (
+                <div className="extra" key={a.id} style={{ margin: "0 15px 10px" }}>
+                  <IcuSlotRow a={a} onOpen={onOpenAct} />
+                </div>
+              ))}
               <AddExtra dateK={k} onAdd={onAdd} />
             </div>
           );
@@ -170,17 +193,18 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel }: 
 }
 
 /* ---------- today view ---------- */
-function TodayView({ store, onOpen, onAdd, onDel }: {
-  store: Store; onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
+function TodayView({ store, activities, onOpen, onOpenAct, onAdd, onDel }: {
+  store: Store; activities: IcuActivity[]; onOpen: (id: string) => void; onOpenAct: (a: IcuActivity) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
 }) {
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const k = iso(now);
   const templ = templSessions(now), extra = extraSessions(now, store);
   const all = [...templ, ...extra];
+  const icuExtras = icuExtrasFor(activities, k, all.map((s) => s.disc));
   return (
     <>
       <div className="weeknav"><div><h2 style={{ textTransform: "capitalize" }}>{DOW_LONG[now.getDay()]}</h2><div className="sub mono">{now.getDate()} {MONTHS[now.getMonth()]} {now.getFullYear()}</div></div></div>
-      {all.length === 0 && (
+      {all.length === 0 && icuExtras.length === 0 && (
         <div className="card"><div className="card-lab"><span className="eyebrow">Descanso</span></div><p style={{ margin: 0, color: "var(--muted)", fontSize: 13.5 }}>Hoy toca descansar o recuperación activa. Añade una caminata suave si te apetece moverte.</p></div>
       )}
       <div className="days"><div className="day"><div className="slots" style={{ gridTemplateColumns: "1fr" }}>
@@ -191,6 +215,12 @@ function TodayView({ store, onOpen, onAdd, onDel }: {
               <SessionRow s={s} store={store} onOpen={onOpen} />
               {s.kind === "extra" && <button className="exdel" onClick={() => onDel(s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>}
             </div>
+          </div>
+        ))}
+        {icuExtras.map((a) => (
+          <div className="slot" key={a.id}>
+            <div className="slot-lab">intervals.icu</div>
+            <div className="extra"><IcuSlotRow a={a} onOpen={onOpenAct} /></div>
           </div>
         ))}
       </div></div></div>
@@ -357,9 +387,8 @@ function IcuSheet({ a, onClose }: { a: IcuActivity; onClose: () => void }) {
     </div>
   );
 }
-function ActivityView({ anchor, todayISO }: { anchor: Date; todayISO: string }) {
+function ActivityView({ anchor, todayISO, onOpenAct }: { anchor: Date; todayISO: string; onOpenAct: (a: IcuActivity) => void }) {
   const { acts, refresh } = useIntervalsFeed(anchor);
-  const [sel, setSel] = useState<IcuActivity | null>(null);
   const groups: { date: string; items: IcuActivity[] }[] = [];
   for (const a of acts) {
     const g = groups[groups.length - 1];
@@ -379,12 +408,11 @@ function ActivityView({ anchor, todayISO }: { anchor: Date; todayISO: string }) 
             {groups.map((g) => (
               <div className="feed-group" key={g.date}>
                 <div className="feed-date">{feedDateLabel(g.date, todayISO)}</div>
-                <div className="day">{g.items.map((a) => <IcuRow key={a.id} a={a} onOpen={setSel} />)}</div>
+                <div className="day">{g.items.map((a) => <IcuRow key={a.id} a={a} onOpen={onOpenAct} />)}</div>
               </div>
             ))}
           </div>
         )}
-      {sel && <IcuSheet a={sel} onClose={() => setSel(null)} />}
     </>
   );
 }
@@ -609,6 +637,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
   const [view, setView] = useState<"week" | "today" | "activity" | "progress">("week");
   const [cursor, setCursor] = useState<Date>(() => mondayOf(new Date()));
   const [openId, setOpenId] = useState<string | null>(null);
+  const [openAct, setOpenAct] = useState<IcuActivity | null>(null);
   const [todayISO] = useState<string>(() => iso(new Date()));
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [toast, setToast] = useState<string | null>(null);
@@ -646,7 +675,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
   const sheetSession = openId ? findSession(openId, store) : null;
   // sigue la semana de la sesión abierta (o la que se ve) para emparejar actividades de intervals.icu
   const focusWeek = sheetSession ? mondayOf(new Date(sheetSession.date + "T00:00:00")) : cursor;
-  const matchActivity = useIntervals(focusWeek);
+  const { activities, match } = useIntervals(focusWeek);
 
   return (
     <>
@@ -662,9 +691,9 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
       </header>
 
       <main className={"wrap" + (view === "today" || view === "activity" ? " fill" : "")}>
-        {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
-        {view === "today" && <TodayView store={store} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
-        {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} />}
+        {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} activities={activities} onOpen={setOpenId} onOpenAct={setOpenAct} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
+        {view === "today" && <TodayView store={store} activities={activities} onOpen={setOpenId} onOpenAct={setOpenAct} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
+        {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} onOpenAct={setOpenAct} />}
         {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} />}
       </main>
 
@@ -674,7 +703,8 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
         ))}
       </div></nav>
 
-      {sheetSession && <SessionSheet id={openId!} s={sheetSession} store={store} api={api} act={matchActivity(sheetSession.date, sheetSession.disc)} onClose={() => setOpenId(null)} />}
+      {sheetSession && <SessionSheet id={openId!} s={sheetSession} store={store} api={api} act={match(sheetSession.date, sheetSession.disc)} onClose={() => setOpenId(null)} />}
+      {openAct && <IcuSheet a={openAct} onClose={() => setOpenAct(null)} />}
       {toast && <div className="toast show"><Icon name="check" size={15} />{toast}</div>}
     </>
   );
