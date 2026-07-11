@@ -18,6 +18,7 @@ export const ICONS: Record<string, ReactNode> = {
   cal: (<><rect x="3" y="5" width="18" height="16" rx="2" {...P} /><path d="M3 9h18M8 3v4M16 3v4" {...P} /></>),
   today: (<><circle cx="12" cy="12" r="9" {...P} /><path d="M12 7v5l3 2" {...P} /></>),
   chart: (<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" {...P} />),
+  feed: (<path d="M3 12h4l2.5-7 5 15 2.5-8H21" {...P} />),
   sun: (<><circle cx="12" cy="12" r="4" {...P} /><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" {...P} /></>),
   moon: (<path d="M20 14.5A8 8 0 019.5 4a7 7 0 108.5 10.5z" {...P} />),
   down: (<path d="M12 4v11M7 11l5 5 5-5M5 20h14" {...P} />),
@@ -25,6 +26,8 @@ export const ICONS: Record<string, ReactNode> = {
   logout: (<><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" {...P} /><path d="M16 17l5-5-5-5M21 12H9" {...P} /></>),
   cloud: (<path d="M7 18a4 4 0 01-.5-7.97A5 5 0 0116 9a3.5 3.5 0 011 6.86" {...P} />),
   mail: (<><rect x="3" y="5" width="18" height="14" rx="2" {...P} /><path d="M3 7l9 6 9-6" {...P} /></>),
+  camera: (<><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" {...P} /><circle cx="12" cy="13" r="3.2" {...P} /></>),
+  mdot: (<><path d="M4 18.5 8 7l4 5.5L16 7l4 11.5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="5" r="2.1" fill="currentColor" /></>),
 };
 
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { Icon } from "@/lib/icons";
 
 function GoogleG() {
   return (
@@ -34,7 +35,7 @@ export default function LoginPage() {
   return (
     <div className="login">
       <div className="login-card">
-        <h1 className="logo">Tría</h1>
+        <div className="login-logo"><span className="login-mark"><Icon name="mdot" size={30} /></span><h1 className="logo">Tría</h1></div>
         <div className="rail" />
         <p className="tag">Tu registro de entreno rumbo al Ironman. Entra con Google y tus datos te siguen a cualquier dispositivo.</p>
 

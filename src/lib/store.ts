@@ -5,12 +5,31 @@ import type { Discipline, Intensity, LogData } from "@/lib/domain";
 import { DISC } from "@/lib/domain";
 
 export type ExtraDef = { id: string; disc: Discipline; name: string; intensity: Intensity };
-export type Store = { logs: Record<string, LogData>; extras: Record<string, ExtraDef[]> };
+export type SetVal = { kg?: string | null; reps?: string | null };
+// gymDefaults[routineKey][exerciseIndex] = valores de la 1ª serie, plantilla para futuras sesiones
+export type Store = { logs: Record<string, LogData>; extras: Record<string, ExtraDef[]>; gymDefaults: Record<string, Record<number, SetVal>> };
 export type SyncState = "loading" | "synced" | "saving" | "offline";
 
 const LS = "tria.store.v1";
 const LS_DIRTY = "tria.dirty.v1";
-const empty = (): Store => ({ logs: {}, extras: {} });
+const PHOTO_BUCKET = "training-photos";
+const GYM_DEF_KEY = "gym:defaults";
+const empty = (): Store => ({ logs: {}, extras: {}, gymDefaults: {} });
+
+// Shrink a camera photo before upload: max 1280px, JPEG q0.7 → typically 100–250 KB.
+async function downscale(file: File): Promise<Blob> {
+  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const max = 1280;
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * scale);
+  const h = Math.round(bmp.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d")!.drawImage(bmp, 0, 0, w, h);
+  bmp.close();
+  return await new Promise<Blob>((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), "image/jpeg", 0.7));
+}
 
 function loadLocal(): Store {
   try {
@@ -48,12 +67,15 @@ function rowsToStore(rows: Row[], keepLocal: Store, dirty: Set<string>): Store {
       const d = row.data as { date: string; disc: Discipline; name: string; intensity: Intensity; log?: LogData };
       (s.extras[d.date] ||= []).push({ id: row.entry_key, disc: d.disc, name: d.name, intensity: d.intensity });
       if (d.log) s.logs[row.entry_key] = d.log;
+    } else if (row.kind === "gymdef") {
+      s.gymDefaults = (row.data as Store["gymDefaults"]) || {};
     } else {
       s.logs[row.entry_key] = row.data as LogData;
     }
   }
   // re-apply locally-dirty entries from the cache so offline edits survive
   for (const key of dirty) {
+    if (key === GYM_DEF_KEY) { s.gymDefaults = keepLocal.gymDefaults; continue; }
     if (keepLocal.logs[key]) s.logs[key] = keepLocal.logs[key];
     for (const date of Object.keys(keepLocal.extras)) {
       const ex = keepLocal.extras[date]?.find((e) => e.id === key);
@@ -86,6 +108,9 @@ export function useStore(userId: string) {
 
   const buildRow = useCallback(
     (key: string): Row => {
+      if (key === GYM_DEF_KEY) {
+        return { entry_key: key, kind: "gymdef", data: storeRef.current.gymDefaults };
+      }
       const ex = isExtra(key);
       if (ex) {
         return { entry_key: key, kind: "extra", data: { date: ex.date, disc: ex.def.disc, name: ex.def.name, intensity: ex.def.intensity, log: storeRef.current.logs[key] || {} } };
@@ -170,17 +195,25 @@ export function useStore(userId: string) {
   );
 
   const setSet = useCallback(
-    (id: string, exIdx: number, setIdx: number, k: "kg" | "reps", value: string) => {
+    (id: string, routine: string | undefined, exIdx: number, setIdx: number, k: "kg" | "reps", value: string) => {
+      const val = value === "" ? null : value;
       const s = { ...storeRef.current, logs: { ...storeRef.current.logs } };
       const log: LogData = { ...(s.logs[id] || {}) };
       const ex = { ...(log.ex || {}) };
       const arr = [...(ex[exIdx] || [])];
-      arr[setIdx] = { ...(arr[setIdx] || {}), [k]: value === "" ? null : value };
+      arr[setIdx] = { ...(arr[setIdx] || {}), [k]: val };
       ex[exIdx] = arr;
       log.ex = ex;
       s.logs[id] = log;
+      // editar la 1ª serie fija la plantilla para el resto de series y futuras sesiones
+      if (setIdx === 0 && routine) {
+        const gd = { ...s.gymDefaults };
+        gd[routine] = { ...(gd[routine] || {}), [exIdx]: { ...(gd[routine]?.[exIdx] || {}), [k]: val } };
+        s.gymDefaults = gd;
+      }
       commit(s);
       markDirty(id);
+      if (setIdx === 0 && routine) markDirty(GYM_DEF_KEY);
     },
     [commit, markDirty],
   );
@@ -224,9 +257,10 @@ export function useStore(userId: string) {
 
   const importData = useCallback(
     async (obj: Store) => {
-      const s: Store = { logs: obj.logs || {}, extras: obj.extras || {} };
+      const s: Store = { logs: obj.logs || {}, extras: obj.extras || {}, gymDefaults: obj.gymDefaults || {} };
       commit(s);
       const rows: Array<Record<string, unknown>> = [];
+      if (Object.keys(s.gymDefaults).length) rows.push({ user_id: userId, entry_key: GYM_DEF_KEY, kind: "gymdef", data: s.gymDefaults, updated_at: new Date().toISOString() });
       for (const key of Object.keys(s.logs)) {
         let isEx = false;
         for (const date of Object.keys(s.extras)) if (s.extras[date]?.some((e) => e.id === key)) isEx = true;
@@ -240,6 +274,48 @@ export function useStore(userId: string) {
     [commit, supabase, userId],
   );
 
+  const addPhoto = useCallback(
+    async (id: string, file: File) => {
+      let blob: Blob = file;
+      try { blob = await downscale(file); } catch {}
+      const folder = id.replace(/[^a-zA-Z0-9-]/g, "_");
+      const path = `${userId}/${folder}/${Date.now()}-${Math.round(Math.random() * 1e6)}.jpg`;
+      const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+      if (error) { setSync("offline"); return; }
+      const s = { ...storeRef.current, logs: { ...storeRef.current.logs } };
+      const log: LogData = { ...(s.logs[id] || {}) };
+      log.photos = [...(log.photos || []), path];
+      s.logs[id] = log;
+      commit(s);
+      markDirty(id);
+    },
+    [supabase, userId, commit, markDirty],
+  );
+
+  const removePhoto = useCallback(
+    async (id: string, path: string) => {
+      const s = { ...storeRef.current, logs: { ...storeRef.current.logs } };
+      const log: LogData = { ...(s.logs[id] || {}) };
+      log.photos = (log.photos || []).filter((p) => p !== path);
+      s.logs[id] = log;
+      commit(s);
+      markDirty(id);
+      await supabase.storage.from(PHOTO_BUCKET).remove([path]);
+    },
+    [supabase, commit, markDirty],
+  );
+
+  const getPhotoUrls = useCallback(
+    async (paths: string[]): Promise<Record<string, string>> => {
+      if (!paths.length) return {};
+      const { data } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600);
+      const map: Record<string, string> = {};
+      (data || []).forEach((d) => { if (d.signedUrl && d.path) map[d.path] = d.signedUrl; });
+      return map;
+    },
+    [supabase],
+  );
+
   const resetAll = useCallback(async () => {
     commit(empty());
     dirty.current.clear();
@@ -247,6 +323,6 @@ export function useStore(userId: string) {
     await supabase.from("training_entries").delete().eq("user_id", userId);
   }, [commit, supabase, userId]);
 
-  return { store, sync, getLog, setField, setSet, toggleDone, addExtra, delExtra, importData, resetAll };
+  return { store, sync, getLog, setField, setSet, toggleDone, addExtra, delExtra, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
 }
 export type UseStore = ReturnType<typeof useStore>;

@@ -3,7 +3,8 @@
 
 -- Una fila por entrada de entrenamiento (log de sesión o sesión extra).
 -- entry_key = id de sesión, p.ej. "2026-07-06:am"  o el id de una extra.
--- kind = 'log' (datos de una sesión de la plantilla) | 'extra' (sesión añadida a mano).
+-- kind = 'log' (datos de una sesión de la plantilla) | 'extra' (sesión añadida a mano)
+--        | 'gymdef' (fila única "gym:defaults": pesos/reps plantilla de la 1ª serie por rutina).
 create table if not exists public.training_entries (
   user_id    uuid        not null default auth.uid() references auth.users on delete cascade,
   entry_key  text        not null,
@@ -32,3 +33,22 @@ create policy "own rows: delete" on public.training_entries
 
 -- Realtime: para que un dispositivo vea al instante lo que guardas en otro.
 alter publication supabase_realtime add table public.training_entries;
+
+-- ---------------------------------------------------------------------------
+-- Fotos de las sesiones (Supabase Storage).
+-- Bucket privado; cada usuario solo accede a su propia carpeta ({user_id}/...).
+-- Las fotos se reducen a ~1280px/JPEG antes de subir para ocupar poco espacio.
+insert into storage.buckets (id, name, public)
+  values ('training-photos', 'training-photos', false)
+  on conflict (id) do nothing;
+
+drop policy if exists "photos: select own" on storage.objects;
+drop policy if exists "photos: insert own" on storage.objects;
+drop policy if exists "photos: delete own" on storage.objects;
+
+create policy "photos: select own" on storage.objects
+  for select using (bucket_id = 'training-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "photos: insert own" on storage.objects
+  for insert with check (bucket_id = 'training-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "photos: delete own" on storage.objects
+  for delete using (bucket_id = 'training-photos' and (storage.foldername(name))[1] = auth.uid()::text);

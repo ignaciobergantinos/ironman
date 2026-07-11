@@ -45,35 +45,34 @@ export const INT: Record<Intensity, { c: string }> = {
   Largo: { c: "var(--long)" },
 };
 
-export type RoutineKey = "upper" | "legs";
+export type RoutineKey = "pull" | "legs" | "push";
 export type Exercise = { n: string; s: number; r: string };
 export const ROUTINES: Record<RoutineKey, { label: string; ex: Exercise[] }> = {
-  upper: {
-    label: "Tren superior",
+  pull: {
+    label: "Tirón",
     ex: [
+      { n: "Dominadas", s: 4, r: "8" },
       { n: "Press banca", s: 4, r: "8" },
-      { n: "Remo con barra", s: 4, r: "10" },
-      { n: "Press militar (mancuernas)", s: 3, r: "10" },
-      { n: "Jalón al pecho / Dominadas", s: 3, r: "10" },
-      { n: "Press inclinado (mancuerna)", s: 3, r: "12" },
-      { n: "Face pull", s: 3, r: "15" },
+      { n: "Remo", s: 4, r: "10" },
       { n: "Curl de bíceps", s: 3, r: "12" },
-      { n: "Extensión de tríceps (polea)", s: 3, r: "12" },
-      { n: "Plancha (core)", s: 3, r: "45s" },
     ],
   },
   legs: {
     label: "Piernas",
     ex: [
       { n: "Sentadilla", s: 4, r: "8" },
-      { n: "Peso muerto rumano", s: 3, r: "10" },
-      { n: "Prensa", s: 3, r: "12" },
-      { n: "Zancadas", s: 3, r: "10/p" },
-      { n: "Curl femoral", s: 3, r: "12" },
-      { n: "Extensión de cuádriceps", s: 3, r: "12" },
-      { n: "Elevación de gemelos", s: 4, r: "15" },
-      { n: "Hip thrust", s: 3, r: "12" },
-      { n: "Plancha lateral", s: 3, r: "30s" },
+      { n: "Gemelos", s: 4, r: "15" },
+      { n: "Isquios", s: 3, r: "12" },
+      { n: "Estocadas", s: 3, r: "10/p" },
+    ],
+  },
+  push: {
+    label: "Empuje",
+    ex: [
+      { n: "Remo", s: 4, r: "10" },
+      { n: "Press de hombros", s: 4, r: "10" },
+      { n: "Mariposa", s: 3, r: "12" },
+      { n: "Vuelos laterales", s: 3, r: "15" },
     ],
   },
 };
@@ -118,7 +117,7 @@ export const WEEK: DayDef[] = [
     dow: 2,
     day: "Martes",
     sessions: [
-      { slot: "am", disc: "gym", name: "Gimnasio · tren superior", intensity: "Medio", routine: "upper" },
+      { slot: "am", disc: "gym", name: "Gimnasio · tirón", intensity: "Medio", routine: "pull" },
       { slot: "pm", disc: "bike", name: "Bici · rodaje Z2", intensity: "Suave", plan: { tag: "Resistencia", steps: ["60–75’ en Z2 constante", "Cadencia 85–95 rpm", "Terreno llano, esfuerzo conversado"] } },
     ],
   },
@@ -150,7 +149,7 @@ export const WEEK: DayDef[] = [
     dow: 6,
     day: "Sábado",
     sessions: [
-      { slot: "am", disc: "gym", name: "Gimnasio · tren superior", intensity: "Medio", routine: "upper" },
+      { slot: "am", disc: "gym", name: "Gimnasio · empuje", intensity: "Medio", routine: "push" },
       { slot: "pm", disc: "bike", name: "Bici · fondo largo", intensity: "Largo", plan: { tag: "Tirada larga", steps: ["90–120’ en Z2 constante", "Come/bebe en ruta", "Opción brick: 10–15’ trote suave al bajar"] } },
     ],
   },
@@ -212,6 +211,7 @@ export type LogData = {
   rpe?: number;
   notes?: string | null;
   ex?: Record<number, Array<{ kg?: string | null; reps?: string | null }>>;
+  photos?: string[];
 };
 export function derive(disc: Discipline, d: LogData): { l: string; v: string; u: string } | null {
   const t = parseTime(d.time);

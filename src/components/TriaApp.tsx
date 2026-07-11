@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useStore, type Store } from "@/lib/store";
+import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
 import {
   DISC, INT, ROUTINES, FIELDS, WEEK, byDow, DOW_LONG, MONTHS,
@@ -65,7 +66,7 @@ function SessionRow({ s, store, onOpen }: { s: Session; store: Store; onOpen: (i
   const sub = s.routine ? ROUTINES[s.routine].ex.length + " ejercicios" : s.plan?.tag ?? DISC[s.disc].label;
   return (
     <button className={"sess" + (done ? " done" : "")} onClick={() => onOpen(s.id)}>
-      <span className="sess-ic" style={{ background: DISC[s.disc].color }}><Icon name={s.disc} size={19} /></span>
+      <span className="sess-ic" style={{ ["--sc"]: DISC[s.disc].color } as React.CSSProperties}><Icon name={s.disc} size={19} /></span>
       <span className="sess-main">
         <span className="sess-name">{s.name}</span>
         <span className="sess-sub">
@@ -199,7 +200,7 @@ function TodayView({ store, onOpen, onAdd, onDel }: {
 }
 
 /* ---------- progress view ---------- */
-function ProgressView({ cursor, setCursor, store, onReset }: { cursor: Date; setCursor: (d: Date) => void; store: Store; onReset: () => void }) {
+function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (d: Date) => void; store: Store }) {
   const v = weekVolume(cursor, store);
   const tiles: { k: Discipline; lab: string; val: string | number; u: string; accent?: boolean }[] = [
     { k: "run", lab: "Carrera", val: v.run.toFixed(1), u: "km" },
@@ -243,15 +244,149 @@ function ProgressView({ cursor, setCursor, store, onReset }: { cursor: Date; set
         </div>
       </div>
       <div className="legend">{(Object.keys(DISC) as Discipline[]).map((k) => <div key={k}><span className="sw" style={{ background: DISC[k].color }} />{DISC[k].label}</div>)}</div>
-      <div className="section-title">Datos</div>
-      <button className="danger" onClick={onReset}>Borrar todos los registros</button>
+    </>
+  );
+}
+
+/* ---------- activity feed (intervals.icu) ---------- */
+function feedDateLabel(dateISO: string, todayISO: string): string {
+  if (dateISO === todayISO) return "Hoy";
+  const y = iso(addDays(new Date(todayISO + "T00:00:00"), -1));
+  if (dateISO === y) return "Ayer";
+  const d = new Date(dateISO + "T00:00:00");
+  return `${DOW_LONG[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+function IcuRow({ a, onOpen }: { a: IcuActivity; onOpen: (a: IcuActivity) => void }) {
+  const stats = icuStats(a);
+  return (
+    <button className="act done" onClick={() => onOpen(a)}>
+      <span className="sess-ic" style={{ background: DISC[a.disc].color }}><Icon name={a.disc} size={19} /></span>
+      <span className="act-main">
+        <span className="act-name">{a.name ?? DISC[a.disc].label}</span>
+        <span className="act-stats">
+          {stats.length === 0 && <span className="act-empty">{a.type}</span>}
+          {stats.map((st, i) => <span key={i} className="actstat"><b>{st.v}</b>{st.u && <i>{st.u}</i>}</span>)}
+        </span>
+      </span>
+      <span className="check"><Icon name="chev" size={16} /></span>
+    </button>
+  );
+}
+// filas de detalle para el sheet de una actividad de intervals.icu (solo lo que viene relleno)
+function icuDetail(a: IcuActivity): { l: string; v: string; u: string }[] {
+  const rows: { l: string; v: string; u: string }[] = [];
+  const push = (l: string, v: string | number | null, u = "") => { if (v != null && v !== "") rows.push({ l, v: String(v), u }); };
+  const cadU = a.disc === "bike" ? "rpm" : "ppm";
+  if (a.distM != null) rows.push(a.disc === "swim" ? { l: "Distancia", v: String(Math.round(a.distM)), u: "m" } : { l: "Distancia", v: (a.distM / 1000).toFixed(2), u: "km" });
+  if (a.movingS != null) push("Duración", fmtDur(a.movingS), "h:m:s");
+  if (a.elapsedS != null && a.elapsedS !== a.movingS) push("Tiempo total", fmtDur(a.elapsedS), "h:m:s");
+  const sp = fmtSpeed(a.disc, a.speedAvg), spm = fmtSpeed(a.disc, a.speedMax);
+  if (sp) rows.push({ l: a.disc === "bike" ? "Velocidad" : "Ritmo", v: sp.v, u: sp.u });
+  if (spm) rows.push({ l: a.disc === "bike" ? "Vel. máx" : "Ritmo máx", v: spm.v, u: spm.u });
+  if (a.hr != null) push("FC media", Math.round(a.hr), "ppm");
+  if (a.hrMax != null) push("FC máx", Math.round(a.hrMax), "ppm");
+  if (a.power != null) push("Potencia", Math.round(a.power), "W");
+  if (a.powerNp != null) push("NP", Math.round(a.powerNp), "W");
+  if (a.powerMax != null) push("Pot. máx", Math.round(a.powerMax), "W");
+  if (a.cad != null) push("Cadencia", Math.round(a.cad), cadU);
+  if (a.cadMax != null) push("Cad. máx", Math.round(a.cadMax), cadU);
+  if (a.elevGain != null) push("Desnivel+", Math.round(a.elevGain), "m");
+  if (a.calories != null) push("Calorías", Math.round(a.calories), "kcal");
+  if (a.load != null) push("Carga", Math.round(a.load), "TSS");
+  if (a.intensity != null) push("Intensidad", a.intensity.toFixed(2));
+  if (a.feel != null) push("Sensación", a.feel, "/5");
+  if (a.rpe != null) push("RPE", a.rpe, "/10");
+  return rows;
+}
+function IcuSheet({ a, onClose }: { a: IcuActivity; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, [onClose]);
+  const rows = icuDetail(a);
+  const d = new Date(a.date + "T00:00:00");
+  const dayLabel = `${DOW_LONG[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const zones = a.hrZoneTimes?.some((t) => t > 0) ? a.hrZoneTimes : null;
+  const origin = [a.device, a.source, a.trainer ? "Indoor" : null].filter(Boolean).join(" · ");
+  const c = DISC[a.disc].color;
+  return (
+    <div className="overlay open" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="sheet">
+        <div className="grab-zone" onClick={onClose}><div className="grab" /></div>
+        <div className="sheet-scroll">
+          <div className="sheet-hero">
+            <span className="sess-ic" style={{ background: c }}><Icon name={a.disc} size={25} /></span>
+            <div style={{ minWidth: 0 }}>
+              <h3>{a.name ?? DISC[a.disc].label}</h3>
+              <div className="meta">
+                <span>{dayLabel} · {a.startLocal.slice(11, 16)}</span>
+                <span className="itag" style={{ color: c, background: `color-mix(in srgb, ${c} 15%, transparent)` }}>{a.type}</span>
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-lab"><span className="eyebrow">Datos · intervals.icu</span></div>
+            <div className="stats">
+              {rows.map((r, i) => (
+                <div className="field derived" key={i}><label>{r.l}</label><div className="inp"><input className="mono" readOnly value={r.v} /><span className="unit">{r.u}</span></div></div>
+              ))}
+            </div>
+          </div>
+          {zones && (
+            <div className="card">
+              <div className="card-lab"><span className="eyebrow">Tiempo en zonas FC</span></div>
+              <div className="stats">
+                {zones.map((t, i) => t > 0 ? (
+                  <div className="field derived" key={i}><label>Z{i + 1}</label><div className="inp"><input className="mono" readOnly value={fmtDur(t)} /></div></div>
+                ) : null)}
+              </div>
+            </div>
+          )}
+          {origin && (
+            <div className="card">
+              <div className="card-lab"><span className="eyebrow">Origen</span></div>
+              <p style={{ margin: 0, color: "var(--muted)", fontSize: 13.5 }}>{origin}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+function ActivityView({ anchor, todayISO }: { anchor: Date; todayISO: string }) {
+  const { acts, refresh } = useIntervalsFeed(anchor);
+  const [sel, setSel] = useState<IcuActivity | null>(null);
+  const groups: { date: string; items: IcuActivity[] }[] = [];
+  for (const a of acts) {
+    const g = groups[groups.length - 1];
+    if (g && g.date === a.date) g.items.push(a);
+    else groups.push({ date: a.date, items: [a] });
+  }
+  return (
+    <>
+      <div className="weeknav">
+        <div><h2>Actividad</h2><div className="sub mono">intervals.icu · {acts.length} {acts.length === 1 ? "actividad" : "actividades"}</div></div>
+        <button className="today-btn" onClick={refresh}><Icon name="cloud" size={14} /> Actualizar</button>
+      </div>
+      {acts.length === 0 && <div className="empty">No hay actividades en intervals.icu.<br />Sincroniza un entreno y pulsa Actualizar.</div>}
+      <div className="feed">
+        {groups.map((g) => (
+          <div className="feed-group" key={g.date}>
+            <div className="feed-date">{feedDateLabel(g.date, todayISO)}</div>
+            <div className="day">{g.items.map((a) => <IcuRow key={a.id} a={a} onOpen={setSel} />)}</div>
+          </div>
+        ))}
+      </div>
+      {sel && <IcuSheet a={sel} onClose={() => setSel(null)} />}
     </>
   );
 }
 
 /* ---------- session sheet ---------- */
-function SessionSheet({ id, s, store, api, onClose }: {
-  id: string; s: Session; store: Store; api: ReturnType<typeof useStore>; onClose: () => void;
+function SessionSheet({ id, s, store, api, act, onClose }: {
+  id: string; s: Session; store: Store; api: ReturnType<typeof useStore>; act: IcuActivity | null; onClose: () => void;
 }) {
   const [openEx, setOpenEx] = useState<Set<number>>(new Set());
   const [dragY, setDragY] = useState(0);
@@ -272,10 +407,24 @@ function SessionSheet({ id, s, store, api, onClose }: {
     else setDragY(0);
   };
   const l = store.logs[id] || {};
+  const photos = l.photos || [];
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
+  const photoKey = photos.join(",");
+  useEffect(() => {
+    let alive = true;
+    if (!photos.length) { setPhotoUrls({}); return; }
+    api.getPhotoUrls(photos).then((m) => { if (alive) setPhotoUrls(m); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photoKey]);
   const d = new Date(s.date + "T00:00:00");
   const dayLabel = `${DOW_LONG[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
   const slotLabel = s.kind === "extra" ? "Sesión extra" : s.slot === "am" ? "Mañana" : "Tarde";
-  const der = s.routine ? null : derive(s.disc, l);
+  // si hay actividad de intervals.icu emparejada, mostramos sus datos en vez de los campos manuales
+  const icuLog = act && !s.routine ? actToLog(act, s.disc) : null;
+  const shown = icuLog ?? l;
+  const der = s.routine ? null : derive(s.disc, shown);
   const fields = FIELDS[s.disc] || FIELDS.run;
   const toggleEx = (i: number) => setOpenEx((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
@@ -293,7 +442,7 @@ function SessionSheet({ id, s, store, api, onClose }: {
         </div>
         <div className="sheet-scroll">
           <div className="sheet-hero">
-            <span className="sess-ic" style={{ background: DISC[s.disc].color }}><Icon name={s.disc} size={25} /></span>
+            <span className="sess-ic" style={{ ["--sc"]: DISC[s.disc].color } as React.CSSProperties}><Icon name={s.disc} size={25} /></span>
             <div style={{ minWidth: 0 }}>
               <h3>{s.name}</h3>
               <div className="meta">
@@ -308,11 +457,21 @@ function SessionSheet({ id, s, store, api, onClose }: {
 
           {s.routine ? (
             <>
+              {act && (
+                <div className="card">
+                  <div className="card-lab"><span className="eyebrow">intervals.icu</span><span className="tag">{act.name ?? act.type}</span></div>
+                  <div className="stats">
+                    <div className="field derived"><label>Duración</label><div className="inp"><input className="mono" readOnly value={fmtDur(act.movingS)} /><span className="unit">h:m:s</span></div></div>
+                    {act.hr != null && <div className="field derived"><label>FC media</label><div className="inp"><input className="mono" readOnly value={Math.round(act.hr)} /><span className="unit">ppm</span></div></div>}
+                  </div>
+                </div>
+              )}
               <div className="card-lab" style={{ padding: "0 2px" }}><span className="eyebrow">Rutina · {ROUTINES[s.routine].label}</span><span className="tag">{ROUTINES[s.routine].ex.length} ejercicios</span></div>
               <div>
                 {ROUTINES[s.routine].ex.map((e, ei) => {
                   const sets = l.ex?.[ei] ?? [];
-                  const filled = sets.some((x) => x && (x.kg || x.reps));
+                  const dflt = store.gymDefaults[s.routine!]?.[ei];
+                  const filled = sets.some((x) => x && (x.kg || x.reps)) || !!(dflt && (dflt.kg || dflt.reps));
                   const open = openEx.has(ei);
                   return (
                     <div className={"ex" + (open ? " open" : "") + (filled ? " hasdata" : "")} key={ei}>
@@ -325,11 +484,13 @@ function SessionSheet({ id, s, store, api, onClose }: {
                           <div className="sethead"><span>Serie</span><span>Peso</span><span>Reps</span></div>
                           {Array.from({ length: e.s }).map((_, si) => {
                             const cur = sets[si] || {};
+                            const kg = cur.kg ?? dflt?.kg ?? "";
+                            const reps = cur.reps ?? dflt?.reps ?? "";
                             return (
                               <div className="setrow" key={si}>
                                 <span className="sname">Serie {si + 1}</span>
-                                <div className="inp"><input inputMode="decimal" value={cur.kg ?? ""} placeholder="kg" onChange={(ev) => api.setSet(id, ei, si, "kg", ev.target.value)} /><span className="unit">kg</span></div>
-                                <div className="inp"><input inputMode="numeric" value={cur.reps ?? ""} placeholder={e.r} onChange={(ev) => api.setSet(id, ei, si, "reps", ev.target.value)} /><span className="unit">reps</span></div>
+                                <div className="inp"><input inputMode="decimal" value={kg} placeholder="kg" onChange={(ev) => api.setSet(id, s.routine, ei, si, "kg", ev.target.value)} /><span className="unit">kg</span></div>
+                                <div className="inp"><input inputMode="numeric" value={reps} placeholder={e.r} onChange={(ev) => api.setSet(id, s.routine, ei, si, "reps", ev.target.value)} /><span className="unit">reps</span></div>
                               </div>
                             );
                           })}
@@ -349,13 +510,13 @@ function SessionSheet({ id, s, store, api, onClose }: {
                 </div>
               )}
               <div className="card">
-                <div className="card-lab"><span className="eyebrow">Tus datos</span></div>
+                <div className="card-lab"><span className="eyebrow">{icuLog ? "Datos · intervals.icu" : "Tus datos"}</span>{icuLog && <span className="tag">{act!.name ?? act!.type}</span>}</div>
                 <div className="stats">
                   {fields.map((f) => (
-                    <div className="field" key={f.k}>
+                    <div className={"field" + (icuLog ? " derived" : "")} key={f.k}>
                       <label>{f.l}</label>
                       <div className="inp">
-                        <input inputMode={f.time ? "text" : "decimal"} value={(l[f.k as keyof LogData] as string) ?? ""} placeholder={f.ph} onChange={(ev) => api.setField(id, f.k as keyof LogData, ev.target.value === "" ? null : ev.target.value)} />
+                        <input className={icuLog ? "mono" : undefined} readOnly={!!icuLog} inputMode={f.time ? "text" : "decimal"} value={(shown[f.k as keyof LogData] as string) ?? ""} placeholder={f.ph} onChange={icuLog ? undefined : (ev) => api.setField(id, f.k as keyof LogData, ev.target.value === "" ? null : ev.target.value)} />
                         <span className="unit">{f.u}</span>
                       </div>
                     </div>
@@ -379,6 +540,22 @@ function SessionSheet({ id, s, store, api, onClose }: {
             <div className="card-lab"><span className="eyebrow">Notas</span></div>
             <textarea className="notes" placeholder="Sensaciones, ritmo, tiempo, molestias…" value={l.notes ?? ""} onChange={(ev) => api.setField(id, "notes", ev.target.value)} />
           </div>
+          <div className="card">
+            <div className="card-lab"><span className="eyebrow">Fotos</span>{photos.length > 0 && <span className="tag">{photos.length}</span>}</div>
+            <div className="photo-grid">
+              {photos.map((p) => (
+                <div className="photo" key={p}>
+                  {photoUrls[p] ? <img src={photoUrls[p]} alt="Foto de la sesión" /> : <div className="photo-ph" />}
+                  <button className="photo-del" onClick={() => api.removePhoto(id, p)} aria-label="Eliminar foto"><Icon name="x" size={13} /></button>
+                </div>
+              ))}
+              <label className={"photo-add" + (uploading ? " busy" : "")}>
+                <input type="file" accept="image/*" capture="environment" className="hidden" disabled={uploading}
+                  onChange={async (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (!f) return; setUploading(true); await api.addPhoto(id, f); setUploading(false); }} />
+                <Icon name="camera" size={22} /><span>{uploading ? "Subiendo…" : "Añadir foto"}</span>
+              </label>
+            </div>
+          </div>
           {s.kind === "extra" && <button className="danger" onClick={() => { api.delExtra(id, s.date); onClose(); }}>Eliminar esta sesión extra</button>}
         </div>
       </div>
@@ -393,17 +570,17 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
   const api = useStore(userId);
   const { store } = api;
   const router = useRouter();
-  const [view, setView] = useState<"week" | "today" | "progress">("week");
+  const [view, setView] = useState<"week" | "today" | "activity" | "progress">("week");
   const [cursor, setCursor] = useState<Date>(() => mondayOf(new Date()));
   const [openId, setOpenId] = useState<string | null>(null);
   const [todayISO] = useState<string>(() => iso(new Date()));
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [toast, setToast] = useState<string | null>(null);
   const toastT = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const cur = document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme:dark)").matches ? "dark" : "light");
-    setTheme(cur as "light" | "dark");
+    const cur = (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark";
+    setTheme(cur);
   }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpenId(null); };
@@ -431,13 +608,16 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
   async function logout() { const supabase = createClient(); await supabase.auth.signOut(); router.push("/login"); router.refresh(); }
 
   const sheetSession = openId ? findSession(openId, store) : null;
+  // sigue la semana de la sesión abierta (o la que se ve) para emparejar actividades de intervals.icu
+  const focusWeek = sheetSession ? mondayOf(new Date(sheetSession.date + "T00:00:00")) : cursor;
+  const matchActivity = useIntervals(focusWeek);
 
   return (
     <>
       <div className="spectrum" />
       <header className="appbar">
         <div className="appbar-in">
-          <div className="brand"><b>Tría</b><span>{email || "Camino al Ironman"}</span></div>
+          <div className="brand"><span className="brand-mark"><Icon name="mdot" size={23} /></span><div className="brand-txt"><b>Tría</b><span>{email || "Camino al Ironman"}</span></div></div>
           <div className={"syncbadge " + api.sync}><span className="dot" />{SYNC_LABEL[api.sync]}</div>
           <button className="iconbtn" onClick={toggleTheme} title="Cambiar tema" aria-label="Cambiar tema"><Icon name={theme === "dark" ? "sun" : "moon"} /></button>
           <button className="iconbtn" onClick={exportData} title="Exportar datos" aria-label="Exportar datos"><Icon name="down" /></button>
@@ -448,16 +628,17 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
       <main className="wrap">
         {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "today" && <TodayView store={store} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
-        {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} onReset={() => { if (confirm("Esto borra TODOS tus registros y sesiones extra. ¿Seguro?")) { void api.resetAll(); flash("Todo borrado"); } }} />}
+        {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} />}
+        {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} />}
       </main>
 
       <nav className="tabbar"><div className="tabbar-in">
-        {([["week", "Semana", "cal"], ["today", "Hoy", "today"], ["progress", "Progreso", "chart"]] as const).map(([k, lab, ic]) => (
+        {([["today", "Hoy", "today"], ["week", "Semana", "cal"], ["activity", "Actividad", "feed"], ["progress", "Progreso", "chart"]] as const).map(([k, lab, ic]) => (
           <button key={k} className={"tab" + (view === k ? " active" : "")} onClick={() => { setView(k); window.scrollTo(0, 0); }}><Icon name={ic} size={22} /><span>{lab}</span></button>
         ))}
       </div></nav>
 
-      {sheetSession && <SessionSheet id={openId!} s={sheetSession} store={store} api={api} onClose={() => setOpenId(null)} />}
+      {sheetSession && <SessionSheet id={openId!} s={sheetSession} store={store} api={api} act={matchActivity(sheetSession.date, sheetSession.disc)} onClose={() => setOpenId(null)} />}
       {toast && <div className="toast show"><Icon name="check" size={15} />{toast}</div>}
     </>
   );
