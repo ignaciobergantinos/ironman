@@ -228,6 +228,54 @@ export function weekMeta(d: Date): { num: number; total: number; phase: string; 
   return { num: i + 1, total: PLAN.length, phase: PLAN[i].phase, recovery: !!PLAN[i].recovery };
 }
 
+/* ---------- alimentación diaria (casi siempre lo mismo) ----------
+   Catálogo de alimentos (kcal por ración habitual) + comidas planificadas que
+   los referencian por id. El registro diario guarda solo las desviaciones:
+   qué alimento planificado NO se comió (skip) y qué extra se añadió (add). */
+export type Food = { id: string; name: string; kcal: number };
+export const FOODS: Food[] = [
+  { id: "banana", name: "Plátano", kcal: 105 },
+  { id: "shake_creatina", name: "Batido de proteína + creatina", kcal: 175 },
+  { id: "shake", name: "Batido de proteína", kcal: 150 },
+  { id: "huevos2", name: "2 huevos + 2 claras", kcal: 180 },
+  { id: "atun", name: "Lata de atún", kcal: 130 },
+  { id: "galletas_arroz_mani", name: "4–6 galletas de arroz con manteca de maní", kcal: 320 },
+  { id: "huevos3_avena", name: "3 huevos + 3 claras con avena", kcal: 470 },
+  { id: "verduras", name: "Muchas verduras", kcal: 80 },
+  { id: "carbo_cena", name: "Arroz / fideos int. / batatas / papas", kcal: 300 },
+  { id: "proteina_cena", name: "Carne / pollo / pescado", kcal: 260 },
+];
+
+export type Meal = { id: string; name: string; tag: string; foods: string[] };
+export const MEALS: Meal[] = [
+  { id: "pre_am", name: "Pre-entreno · mañana", tag: "Antes de entrenar", foods: ["banana", "shake_creatina"] },
+  { id: "desayuno", name: "Desayuno", tag: "Post-entreno", foods: ["huevos2", "atun", "galletas_arroz_mani"] },
+  { id: "almuerzo", name: "Almuerzo", tag: "Mediodía", foods: ["huevos3_avena", "verduras"] },
+  { id: "merienda", name: "Merienda · pre-entreno", tag: "Antes de entrenar", foods: ["banana", "shake"] },
+  { id: "cena", name: "Cena", tag: "Noche", foods: ["carbo_cena", "proteina_cena", "verduras"] },
+];
+
+// desviaciones de un día: por comida, planificados no comidos + extras añadidos
+export type MealLog = { skip?: string[]; add?: string[] };
+export type FoodDay = Record<string, MealLog>;
+
+export function foodsById(custom: Food[] = []): Record<string, Food> {
+  const m: Record<string, Food> = {};
+  for (const f of [...FOODS, ...custom]) m[f.id] = f;
+  return m;
+}
+// kcal de una comida en un día concreto (planificados menos skip, más extras)
+export function mealKcal(meal: Meal, log: MealLog | undefined, byId: Record<string, Food>): number {
+  const skip = new Set(log?.skip || []);
+  let kcal = 0;
+  for (const fid of meal.foods) if (!skip.has(fid)) kcal += byId[fid]?.kcal ?? 0;
+  for (const fid of log?.add || []) kcal += byId[fid]?.kcal ?? 0;
+  return kcal;
+}
+export function dayKcal(day: FoodDay | undefined, byId: Record<string, Food>): number {
+  return MEALS.reduce((sum, m) => sum + mealKcal(m, day?.[m.id], byId), 0);
+}
+
 export const DOW_LONG = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 export const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -282,6 +330,16 @@ export type LogData = {
   ex?: Record<number, Array<{ kg?: string | null; reps?: string | null }>>;
   photos?: string[];
 };
+// ¿tiene el registro datos introducidos (más allá de "done")?
+export function hasData(l?: LogData): boolean {
+  if (!l) return false;
+  return Object.entries(l).some(([k, v]) => {
+    if (k === "done") return false;
+    if (v == null || v === "") return false;
+    if (typeof v === "object") return Object.keys(v).length > 0;
+    return true;
+  });
+}
 export function derive(disc: Discipline, d: LogData): { l: string; v: string; u: string } | null {
   const t = parseTime(d.time);
   const dist = parseFloat(d.dist ?? "");

@@ -1,7 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Icon } from "@/lib/icons";
+
+const DEV_EMAILS = ["ignaciobergantinos@gmail.com", "test@tria.local"];
 
 function GoogleG() {
   return (
@@ -17,6 +19,12 @@ function GoogleG() {
 export default function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isLocal, setIsLocal] = useState(false);
+  const [devEmail, setDevEmail] = useState(DEV_EMAILS[0]);
+
+  useEffect(() => {
+    setIsLocal(location.hostname === "localhost" || location.hostname === "127.0.0.1");
+  }, []);
 
   async function google() {
     setBusy(true);
@@ -44,6 +52,29 @@ export default function LoginPage() {
         </button>
 
         {error && <div className="err">{error}</div>}
+
+        {isLocal && (
+          <div className="devlogin">
+            <div className="devlogin-lab">Solo local · sin SSO</div>
+            <input
+              className="devlogin-input"
+              type="email"
+              value={devEmail}
+              onChange={(e) => setDevEmail(e.target.value)}
+              placeholder="tu@email.com"
+              spellCheck={false}
+              autoCapitalize="none"
+            />
+            <a className="devlogin-btn" href={`/api/dev-login?email=${encodeURIComponent(devEmail)}`}>
+              Entrar como {devEmail || "…"}
+            </a>
+            <div className="devlogin-presets">
+              {DEV_EMAILS.map((e) => (
+                <button key={e} type="button" className="devlogin-chip" onClick={() => setDevEmail(e)}>{e}</button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <p className="note">Un toque para entrar. Tus datos se sincronizan en la nube y funcionan también sin conexión.</p>
       </div>

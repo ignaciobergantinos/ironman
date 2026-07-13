@@ -28,6 +28,7 @@ export const ICONS: Record<string, ReactNode> = {
   mail: (<><rect x="3" y="5" width="18" height="14" rx="2" {...P} /><path d="M3 7l9 6 9-6" {...P} /></>),
   camera: (<><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" {...P} /><circle cx="12" cy="13" r="3.2" {...P} /></>),
   mdot: (<><path d="M4 18.5 8 7l4 5.5L16 7l4 11.5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="5" r="2.1" fill="currentColor" /></>),
+  food: (<><path d="M6 3v7a2 2 0 002 2v9M8 3v6M5 3v6M18 3c-1.5 0-2.5 2-2.5 5s1 4 2.5 4v9" {...P} /></>),
 };
 
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {

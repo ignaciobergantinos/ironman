@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Discipline, LogData } from "@/lib/domain";
 import { iso, addDays, derive, fmtPace } from "@/lib/domain";
+import { LOCAL_MOCK, mockActivities } from "@/lib/local-mock";
 
 export type IcuActivity = {
   id: string;
@@ -54,6 +55,7 @@ function useIcuActivities(oldest: string, newest: string): [IcuActivity[], () =>
   }, [oldest, newest]);
 
   useEffect(() => {
+    if (LOCAL_MOCK) { setActs(mockActivities().filter((a) => a.date >= oldest && a.date <= newest)); return; }
     const ctrl = new AbortController();
     void fetchRange({ signal: ctrl.signal });
     const iv = setInterval(() => void fetchRange(), POLL_MS);

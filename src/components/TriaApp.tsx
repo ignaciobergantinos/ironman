@@ -2,13 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useStore, type Store } from "@/lib/store";
-import { useIntervals, useIntervalsFeed, icuExtrasFor, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
+import { useStore, type Store, type ImportEntry } from "@/lib/store";
+import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
 import {
-  DISC, INT, ROUTINES, FIELDS, dayDef, weekMeta, DOW_LONG, MONTHS,
-  iso, mondayOf, addDays, fmtDate, derive,
-  type Discipline, type Session, type LogData,
+  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, mealKcal, dayKcal, dayDef, weekMeta, DOW_LONG, MONTHS,
+  iso, mondayOf, addDays, fmtDate, derive, hasData,
+  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog,
 } from "@/lib/domain";
 
 /* ---------- pure helpers ---------- */
@@ -25,15 +25,6 @@ function findSession(id: string, store: Store): Session | null {
   const t = templSessions(d).find((s) => s.id === id);
   if (t) return t;
   return extraSessions(d, store).find((s) => s.id === id) ?? null;
-}
-function hasData(l?: LogData): boolean {
-  if (!l) return false;
-  return Object.entries(l).some(([k, v]) => {
-    if (k === "done") return false;
-    if (v == null || v === "") return false;
-    if (typeof v === "object") return Object.keys(v).length > 0;
-    return true;
-  });
 }
 type Vol = { run: number; bike: number; swim: number; walk: number; gymDone: number; done: number; total: number };
 function weekVolume(mon: Date, store: Store): Vol {
@@ -99,26 +90,10 @@ function AddExtra({ dateK, onAdd }: { dateK: string; onAdd: (disc: Discipline, d
   );
 }
 
-/* ---------- fila de actividad de intervals.icu sin sesión planificada (extra) ---------- */
-function IcuSlotRow({ a, onOpen }: { a: IcuActivity; onOpen: (a: IcuActivity) => void }) {
-  const stats = icuStats(a);
-  const sub = stats.slice(0, 2).map((s) => (s.u ? `${s.v} ${s.u}` : s.v)).join(" · ") || a.type;
-  return (
-    <button className="sess" onClick={() => onOpen(a)}>
-      <span className="sess-ic" style={{ ["--sc"]: DISC[a.disc].color } as React.CSSProperties}><Icon name={a.disc} size={19} /></span>
-      <span className="sess-main">
-        <span className="sess-name">{a.name ?? DISC[a.disc].label}</span>
-        <span className="sess-sub"><span className="idot" style={{ background: DISC[a.disc].color }} />intervals.icu · {sub}</span>
-      </span>
-      <span className="ico-chev"><Icon name="chev" size={16} /></span>
-    </button>
-  );
-}
-
 /* ---------- week view ---------- */
-function WeekView({ cursor, setCursor, store, todayISO, activities, onOpen, onOpenAct, onAdd, onDel }: {
-  cursor: Date; setCursor: (d: Date) => void; store: Store; todayISO: string; activities: IcuActivity[];
-  onOpen: (id: string) => void; onOpenAct: (a: IcuActivity) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
+function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel }: {
+  cursor: Date; setCursor: (d: Date) => void; store: Store; todayISO: string;
+  onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
 }) {
   const start = cursor, end = addDays(start, 6);
   const sameMonth = start.getMonth() === end.getMonth();
@@ -152,11 +127,10 @@ function WeekView({ cursor, setCursor, store, todayISO, activities, onOpen, onOp
           const d = addDays(start, i), k = iso(d), def = dayDef(d);
           const isToday = k === todayISO;
           const templ = templSessions(d), extra = extraSessions(d, store);
-          const icuExtras = icuExtrasFor(activities, k, [...templ, ...extra].map((s) => s.disc));
           return (
             <div key={k} className={"day" + (isToday ? " today" : "")}>
               <div className="day-h"><span className="dow">{def.day}</span><span className="date">{fmtDate(d)}</span>{isToday && <span className="todaypill">Hoy</span>}</div>
-              {def.rest && templ.length === 0 && extra.length === 0 && icuExtras.length === 0 && (
+              {def.rest && templ.length === 0 && extra.length === 0 && (
                 <div className="restnote">Descanso o recuperación activa. Puedes añadir una caminata o nado suave.</div>
               )}
               {!def.rest && (
@@ -178,11 +152,6 @@ function WeekView({ cursor, setCursor, store, todayISO, activities, onOpen, onOp
                   <button className="exdel" onClick={() => onDel(s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>
                 </div>
               ))}
-              {icuExtras.map((a) => (
-                <div className="extra" key={a.id} style={{ margin: "0 15px 10px" }}>
-                  <IcuSlotRow a={a} onOpen={onOpenAct} />
-                </div>
-              ))}
               <AddExtra dateK={k} onAdd={onAdd} />
             </div>
           );
@@ -193,18 +162,17 @@ function WeekView({ cursor, setCursor, store, todayISO, activities, onOpen, onOp
 }
 
 /* ---------- today view ---------- */
-function TodayView({ store, activities, onOpen, onOpenAct, onAdd, onDel }: {
-  store: Store; activities: IcuActivity[]; onOpen: (id: string) => void; onOpenAct: (a: IcuActivity) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
+function TodayView({ store, onOpen, onAdd, onDel }: {
+  store: Store; onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
 }) {
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const k = iso(now);
   const templ = templSessions(now), extra = extraSessions(now, store);
   const all = [...templ, ...extra];
-  const icuExtras = icuExtrasFor(activities, k, all.map((s) => s.disc));
   return (
     <>
       <div className="weeknav"><div><h2 style={{ textTransform: "capitalize" }}>{DOW_LONG[now.getDay()]}</h2><div className="sub mono">{now.getDate()} {MONTHS[now.getMonth()]} {now.getFullYear()}</div></div></div>
-      {all.length === 0 && icuExtras.length === 0 && (
+      {all.length === 0 && (
         <div className="card"><div className="card-lab"><span className="eyebrow">Descanso</span></div><p style={{ margin: 0, color: "var(--muted)", fontSize: 13.5 }}>Hoy toca descansar o recuperación activa. Añade una caminata suave si te apetece moverte.</p></div>
       )}
       <div className="days"><div className="day"><div className="slots" style={{ gridTemplateColumns: "1fr" }}>
@@ -217,12 +185,6 @@ function TodayView({ store, activities, onOpen, onOpenAct, onAdd, onDel }: {
             </div>
           </div>
         ))}
-        {icuExtras.map((a) => (
-          <div className="slot" key={a.id}>
-            <div className="slot-lab">intervals.icu</div>
-            <div className="extra"><IcuSlotRow a={a} onOpen={onOpenAct} /></div>
-          </div>
-        ))}
       </div></div></div>
       <div className="fill-bottom"><AddExtra dateK={k} onAdd={onAdd} /></div>
     </>
@@ -231,7 +193,11 @@ function TodayView({ store, activities, onOpen, onOpenAct, onAdd, onDel }: {
 
 /* ---------- progress view ---------- */
 function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (d: Date) => void; store: Store }) {
-  const v = weekVolume(cursor, store);
+  const mon = mondayOf(cursor);
+  const end = addDays(mon, 6);
+  const sameMonth = mon.getMonth() === end.getMonth();
+  const title = sameMonth ? `${mon.getDate()}–${end.getDate()} ${MONTHS[end.getMonth()]}` : `${fmtDate(mon)} – ${fmtDate(end)}`;
+  const v = weekVolume(mon, store);
   const tiles: { k: Discipline; lab: string; val: string | number; u: string; accent?: boolean }[] = [
     { k: "run", lab: "Carrera", val: v.run.toFixed(1), u: "km" },
     { k: "bike", lab: "Bici", val: v.bike.toFixed(1), u: "km" },
@@ -242,10 +208,15 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
   ];
   const weeks: { mon: Date; done: number }[] = [];
   let max = 1;
-  for (let i = 7; i >= 0; i--) { const mon = addDays(cursor, -7 * i); const v2 = weekVolume(mon, store); weeks.push({ mon, done: v2.done }); max = Math.max(max, v2.total); }
+  for (let i = 7; i >= 0; i--) { const wmon = addDays(mon, -7 * i); const v2 = weekVolume(wmon, store); weeks.push({ mon: wmon, done: v2.done }); max = Math.max(max, v2.total); }
   return (
     <>
-      <div className="weeknav"><div><h2>Progreso</h2><div className="sub mono">Volumen de la semana en curso</div></div><button className="today-btn" onClick={() => setCursor(mondayOf(new Date()))}>Hoy</button></div>
+      <div className="weeknav">
+        <button className="navbtn" onClick={() => setCursor(addDays(mon, -7))} aria-label="Semana anterior"><Icon name="left" size={16} /></button>
+        <div><h2>Progreso</h2><div className="sub mono">Volumen · {title}</div></div>
+        <button className="navbtn" onClick={() => setCursor(addDays(mon, 7))} aria-label="Semana siguiente"><Icon name="right" size={16} /></button>
+        <button className="today-btn" onClick={() => setCursor(mondayOf(new Date()))}>Hoy</button>
+      </div>
       <div className="tiles">
         {tiles.map((t, i) => {
           const c = t.accent ? "var(--accent)" : DISC[t.k].color;
@@ -278,7 +249,94 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
   );
 }
 
-/* ---------- activity feed (intervals.icu) ---------- */
+/* ---------- food view (alimentación diaria) ----------
+   Por defecto se asume que comiste lo planificado; solo registras las
+   desviaciones: desmarca lo que no comiste, añade lo que comiste de más. */
+function FoodPicker({ foods, onPick, onCreate }: { foods: Food[]; onPick: (id: string) => void; onCreate: (name: string, kcal: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [kcal, setKcal] = useState("");
+  const create = () => {
+    const k = parseInt(kcal, 10);
+    if (!name.trim() || !(k > 0)) return;
+    onCreate(name.trim(), k);
+    setName(""); setKcal(""); setOpen(false);
+  };
+  return (
+    <div className="food-add">
+      {open && (
+        <div className="food-pick">
+          <div className="picker">
+            {foods.map((f) => <button key={f.id} onClick={() => { onPick(f.id); setOpen(false); }}>{f.name} · {f.kcal}</button>)}
+          </div>
+          <div className="food-new">
+            <input placeholder="Alimento nuevo" value={name} onChange={(e) => setName(e.target.value)} />
+            <input inputMode="numeric" placeholder="kcal" value={kcal} onChange={(e) => setKcal(e.target.value)} />
+            <button className="food-new-add" onClick={create} aria-label="Crear alimento"><Icon name="plus" size={15} /></button>
+          </div>
+        </div>
+      )}
+      <button className="addbtn" onClick={() => setOpen((o) => !o)}><Icon name="plus" size={15} /> Comí algo más</button>
+    </div>
+  );
+}
+function FoodRow({ name, kcal, eaten, extra, onClick }: { name: string; kcal: number; eaten: boolean; extra?: boolean; onClick: () => void }) {
+  return (
+    <button className={"sess food-row" + (eaten ? " done" : "")} onClick={onClick}>
+      <span className="sess-main">
+        <span className="sess-name">{name}{extra && <b className="food-extra-tag">extra</b>}</span>
+        <span className="sess-sub">{kcal} kcal</span>
+      </span>
+      <span className="check"><Icon name={extra ? "x" : "check"} size={12} /></span>
+    </button>
+  );
+}
+function MealCard({ meal, log, date, byId, catalog, api }: {
+  meal: Meal; log: MealLog | undefined; date: string; byId: Record<string, Food>; catalog: Food[]; api: ReturnType<typeof useStore>;
+}) {
+  const skip = new Set(log?.skip || []);
+  const kcal = mealKcal(meal, log, byId);
+  return (
+    <div className="card">
+      <div className="card-lab"><span className="eyebrow">{meal.name}</span><span className="tag">{kcal} kcal</span></div>
+      <div className="food-list">
+        {meal.foods.map((fid) => (
+          <FoodRow key={fid} name={byId[fid]?.name ?? fid} kcal={byId[fid]?.kcal ?? 0} eaten={!skip.has(fid)} onClick={() => api.toggleFoodPlanned(date, meal.id, fid)} />
+        ))}
+        {(log?.add || []).map((fid, idx) => (
+          <FoodRow key={"x" + idx} name={byId[fid]?.name ?? fid} kcal={byId[fid]?.kcal ?? 0} eaten extra onClick={() => api.removeFoodExtra(date, meal.id, idx)} />
+        ))}
+      </div>
+      <FoodPicker foods={catalog} onPick={(fid) => api.addFoodExtra(date, meal.id, fid)} onCreate={(n, k) => api.addFoodExtra(date, meal.id, api.addCustomFood(n, k))} />
+    </div>
+  );
+}
+function FoodView({ api }: { api: ReturnType<typeof useStore> }) {
+  const [day, setDay] = useState<Date>(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
+  const k = iso(day);
+  const byId = foodsById(api.store.customFoods);
+  const catalog = [...FOODS, ...api.store.customFoods];
+  const dayLog = api.store.foodLog[k];
+  const total = dayKcal(dayLog, byId);
+  const isToday = k === iso(new Date());
+  return (
+    <>
+      <div className="weeknav">
+        <button className="navbtn" onClick={() => setDay(addDays(day, -1))} aria-label="Día anterior"><Icon name="left" size={16} /></button>
+        <div><h2 style={{ textTransform: "capitalize" }}>{isToday ? "Hoy" : DOW_LONG[day.getDay()]}</h2><div className="sub mono">{day.getDate()} {MONTHS[day.getMonth()]} {day.getFullYear()}</div></div>
+        <button className="navbtn" onClick={() => setDay(addDays(day, 1))} aria-label="Día siguiente"><Icon name="right" size={16} /></button>
+        <button className="today-btn" onClick={() => { const d = new Date(); d.setHours(0, 0, 0, 0); setDay(d); }}>Hoy</button>
+      </div>
+      <div className="adh">
+        <div className="ring" style={{ background: "var(--accent)" }}><b style={{ color: "var(--accent)" }}><Icon name="food" size={19} /></b></div>
+        <div className="adh-txt"><div className="big mono">{total} kcal</div><div className="small">total del día · ajusta lo que cambie</div></div>
+      </div>
+      {MEALS.map((m) => <MealCard key={m.id} meal={m} log={dayLog?.[m.id]} date={k} byId={byId} catalog={catalog} api={api} />)}
+    </>
+  );
+}
+
+/* ---------- activity feed ---------- */
 function feedDateLabel(dateISO: string, todayISO: string): string {
   if (dateISO === todayISO) return "Hoy";
   const y = iso(addDays(new Date(todayISO + "T00:00:00"), -1));
@@ -302,7 +360,7 @@ function IcuRow({ a, onOpen }: { a: IcuActivity; onOpen: (a: IcuActivity) => voi
     </button>
   );
 }
-// filas de detalle para el sheet de una actividad de intervals.icu (solo lo que viene relleno)
+// filas de detalle para el sheet de una actividad registrada (solo lo que viene relleno)
 function icuDetail(a: IcuActivity): { l: string; v: string; u: string }[] {
   const rows: { l: string; v: string; u: string }[] = [];
   const push = (l: string, v: string | number | null, u = "") => { if (v != null && v !== "") rows.push({ l, v: String(v), u }); };
@@ -359,7 +417,7 @@ function IcuSheet({ a, onClose }: { a: IcuActivity; onClose: () => void }) {
             </div>
           </div>
           <div className="card">
-            <div className="card-lab"><span className="eyebrow">Datos · intervals.icu</span></div>
+            <div className="card-lab"><span className="eyebrow">Datos</span></div>
             <div className="stats">
               {rows.map((r, i) => (
                 <div className="field derived" key={i}><label>{r.l}</label><div className="inp"><input className="mono" readOnly value={r.v} /><span className="unit">{r.u}</span></div></div>
@@ -398,11 +456,11 @@ function ActivityView({ anchor, todayISO, onOpenAct }: { anchor: Date; todayISO:
   return (
     <>
       <div className="weeknav">
-        <div><h2>Actividad</h2><div className="sub mono">intervals.icu · {acts.length} {acts.length === 1 ? "actividad" : "actividades"}</div></div>
+        <div><h2>Actividad</h2><div className="sub mono">{acts.length} {acts.length === 1 ? "actividad" : "actividades"}</div></div>
         <button className="today-btn" onClick={refresh}><Icon name="cloud" size={14} /> Actualizar</button>
       </div>
       {acts.length === 0
-        ? <div className="fill-grow"><div className="empty">No hay actividades en intervals.icu.<br />Sincroniza un entreno y pulsa Actualizar.</div></div>
+        ? <div className="fill-grow"><div className="empty">No hay actividades registradas.<br />Sincroniza un entreno y pulsa Actualizar.</div></div>
         : (
           <div className="feed">
             {groups.map((g) => (
@@ -482,10 +540,11 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
   const d = new Date(s.date + "T00:00:00");
   const dayLabel = `${DOW_LONG[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
   const slotLabel = s.kind === "extra" ? "Sesión extra" : s.slot === "am" ? "Mañana" : "Tarde";
-  // si hay actividad de intervals.icu emparejada, mostramos sus datos en vez de los campos manuales
-  const icuLog = act && !s.routine ? actToLog(act, s.disc) : null;
-  const shown = icuLog ?? l;
-  const der = s.routine ? null : derive(s.disc, shown);
+  // si hay actividad sincronizada, prerrellena los campos pero SIEMPRE editables (el usuario
+  // corrige, p.ej. la distancia de cinta/rodillo que viene mal). Lo que edite gana sobre el auto.
+  const autoLog = act && !s.routine ? actToLog(act, s.disc) : null;
+  const fieldVal = (k: keyof LogData) => (l[k] ?? autoLog?.[k] ?? "") as string;
+  const der = s.routine ? null : derive(s.disc, { ...autoLog, ...l });
   const fields = FIELDS[s.disc] || FIELDS.run;
   const toggleEx = (i: number) => setOpenEx((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
@@ -515,7 +574,7 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
             <>
               {act && (
                 <div className="card">
-                  <div className="card-lab"><span className="eyebrow">intervals.icu</span><span className="tag">{act.name ?? act.type}</span></div>
+                  <div className="card-lab"><span className="eyebrow">Registrado</span><span className="tag">{act.name ?? act.type}</span></div>
                   <div className="stats">
                     <div className="field derived"><label>Duración</label><div className="inp"><input className="mono" readOnly value={fmtDur(act.movingS)} /><span className="unit">h:m:s</span></div></div>
                     {act.hr != null && <div className="field derived"><label>FC media</label><div className="inp"><input className="mono" readOnly value={Math.round(act.hr)} /><span className="unit">ppm</span></div></div>}
@@ -566,13 +625,13 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
                 </div>
               )}
               <div className="card">
-                <div className="card-lab"><span className="eyebrow">{icuLog ? "Datos · intervals.icu" : "Tus datos"}</span>{icuLog && <span className="tag">{act!.name ?? act!.type}</span>}</div>
+                <div className="card-lab"><span className="eyebrow">Tus datos</span>{autoLog && <span className="tag">{act!.name ?? act!.type}</span>}</div>
                 <div className="stats">
                   {fields.map((f) => (
-                    <div className={"field" + (icuLog ? " derived" : "")} key={f.k}>
+                    <div className="field" key={f.k}>
                       <label>{f.l}</label>
                       <div className="inp">
-                        <input className={icuLog ? "mono" : undefined} readOnly={!!icuLog} inputMode={f.time ? "text" : "decimal"} value={(shown[f.k as keyof LogData] as string) ?? ""} placeholder={f.ph} onChange={icuLog ? undefined : (ev) => api.setField(id, f.k as keyof LogData, ev.target.value === "" ? null : ev.target.value)} />
+                        <input inputMode={f.time ? "text" : "decimal"} value={fieldVal(f.k as keyof LogData)} placeholder={f.ph} onChange={(ev) => api.setField(id, f.k as keyof LogData, ev.target.value === "" ? null : ev.target.value)} />
                         <span className="unit">{f.u}</span>
                       </div>
                     </div>
@@ -634,7 +693,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
   const api = useStore(userId);
   const { store } = api;
   const router = useRouter();
-  const [view, setView] = useState<"week" | "today" | "activity" | "progress">("week");
+  const [view, setView] = useState<"week" | "today" | "activity" | "progress" | "food">("week");
   const [cursor, setCursor] = useState<Date>(() => mondayOf(new Date()));
   const [openId, setOpenId] = useState<string | null>(null);
   const [openAct, setOpenAct] = useState<IcuActivity | null>(null);
@@ -673,9 +732,34 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
   async function logout() { const supabase = createClient(); await supabase.auth.signOut(); router.push("/login"); router.refresh(); }
 
   const sheetSession = openId ? findSession(openId, store) : null;
-  // sigue la semana de la sesión abierta (o la que se ve) para emparejar actividades de intervals.icu
+  // sigue la semana de la sesión abierta (o la que se ve) para emparejar las actividades sincronizadas
   const focusWeek = sheetSession ? mondayOf(new Date(sheetSession.date + "T00:00:00")) : cursor;
   const { activities, match } = useIntervals(focusWeek);
+
+  // vuelca las actividades de la semana en el registro: cada una ocupa su sesión planificada
+  // (mismo día y disciplina) o, si no hay, se crea como extra editable. Solo una vez por actividad.
+  useEffect(() => {
+    if (!activities.length) return;
+    const claimed = new Set<string>();
+    const entries: ImportEntry[] = [];
+    const byTime = [...activities].sort((a, b) => (a.startLocal < b.startLocal ? -1 : 1));
+    for (const a of byTime) {
+      if (store.imported[a.id]) continue;
+      const d = new Date(a.date + "T00:00:00");
+      const sessions = [...templSessions(d), ...extraSessions(d, store)];
+      const seat = sessions.find((sn) => sn.disc === a.disc && !claimed.has(sn.id) && !sn.id.includes(":icu-"));
+      const log: LogData = a.disc === "gym" ? { done: true } : { ...actToLog(a, a.disc), done: true };
+      if (seat) {
+        claimed.add(seat.id);
+        entries.push({ actId: a.id, id: seat.id, dateK: a.date, log });
+      } else {
+        const eid = `${a.date}:icu-${a.id}`;
+        entries.push({ actId: a.id, id: eid, dateK: a.date, log, extra: { id: eid, disc: a.disc, name: a.name ?? DISC[a.disc].label, intensity: "Suave" } });
+      }
+    }
+    if (entries.length) api.importActivities(entries);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activities]);
 
   return (
     <>
@@ -691,14 +775,15 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
       </header>
 
       <main className={"wrap" + (view === "today" || view === "activity" ? " fill" : "")}>
-        {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} activities={activities} onOpen={setOpenId} onOpenAct={setOpenAct} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
-        {view === "today" && <TodayView store={store} activities={activities} onOpen={setOpenId} onOpenAct={setOpenAct} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
+        {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
+        {view === "today" && <TodayView store={store} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} onOpenAct={setOpenAct} />}
         {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} />}
+        {view === "food" && <FoodView api={api} />}
       </main>
 
       <nav className="tabbar"><div className="tabbar-in">
-        {([["today", "Hoy", "today"], ["week", "Semana", "cal"], ["activity", "Actividad", "feed"], ["progress", "Progreso", "chart"]] as const).map(([k, lab, ic]) => (
+        {([["today", "Hoy", "today"], ["week", "Semana", "cal"], ["activity", "Actividad", "feed"], ["progress", "Progreso", "chart"], ["food", "Comida", "food"]] as const).map(([k, lab, ic]) => (
           <button key={k} className={"tab" + (view === k ? " active" : "")} onClick={() => { setView(k); window.scrollTo(0, 0); }}><Icon name={ic} size={22} /><span>{lab}</span></button>
         ))}
       </div></nav>

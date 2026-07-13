@@ -1,7 +1,9 @@
-import { type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { LOCAL_MOCK } from "@/lib/local-mock";
 
 export async function middleware(request: NextRequest) {
+  if (LOCAL_MOCK) return NextResponse.next(); // local sin Supabase: no hay auth que refrescar
   return await updateSession(request);
 }
 

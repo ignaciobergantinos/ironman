@@ -117,6 +117,18 @@ input,textarea,select{font-family:inherit}
 .picker button{border:1px solid var(--border);background:var(--surface-2);border-radius:9px;padding:7px 11px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px}
 .picker button:hover{border-color:var(--border-strong)}
 
+/* alimentación */
+.food-list{display:flex;flex-direction:column;gap:11px;margin-bottom:12px}
+.food-row .sess-sub{color:var(--faint)}
+.food-extra-tag{margin-left:7px;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);padding:1px 6px;border-radius:20px;vertical-align:middle}
+.food-add{margin-top:2px}
+.food-pick{margin-bottom:10px}
+.food-new{display:flex;gap:7px;margin-top:9px}
+.food-new input{flex:1;min-width:0;border:1px solid var(--border);background:var(--surface-2);border-radius:9px;padding:8px 11px;font-size:12.5px;color:var(--text)}
+.food-new input:last-of-type{flex:0 0 68px}
+.food-new-add{flex:0 0 auto;width:36px;border:1px solid var(--border);background:var(--surface-2);border-radius:9px;color:var(--accent);display:grid;place-items:center}
+.food-new-add:hover{border-color:var(--accent)}
+
 .overlay{position:fixed;inset:0;z-index:60;background:rgba(10,13,18,.5);backdrop-filter:blur(2px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
 .overlay.open{opacity:1;pointer-events:auto}
 .sheet{position:relative;width:100%;max-width:640px;max-height:92vh;background:var(--bg);border-radius:22px 22px 0 0;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;transform:translateY(16px);transition:transform .22s cubic-bezier(.2,.7,.3,1);overflow:hidden}
@@ -263,6 +275,14 @@ textarea.notes:focus{border-color:var(--accent);background:var(--surface)}
 .login .note{margin-top:18px;font-size:12.5px;color:var(--muted);line-height:1.5}
 .login .ok{margin-top:16px;background:color-mix(in srgb,var(--good) 12%,transparent);border:1px solid color-mix(in srgb,var(--good) 35%,transparent);color:var(--text);border-radius:12px;padding:14px;font-size:13.5px}
 .login .err{color:var(--hard);font-size:13px;margin-top:12px;font-weight:600}
+.devlogin{margin-top:18px;padding:14px;border:1px dashed var(--border-strong);border-radius:14px;display:flex;flex-direction:column;gap:9px}
+.devlogin-lab{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+.devlogin-input{width:100%;background:var(--surface-2);border:1.5px solid transparent;border-radius:11px;padding:11px 12px;font-size:15px;color:var(--text);outline:none}
+.devlogin-input:focus{border-color:var(--accent);background:var(--surface)}
+.devlogin-btn{text-align:center;background:var(--text);color:var(--bg);border-radius:11px;padding:11px;font-size:13.5px;font-weight:800;text-decoration:none}
+.devlogin-presets{display:flex;flex-wrap:wrap;gap:6px}
+.devlogin-chip{font-size:11.5px;font-weight:600;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:20px;padding:5px 10px}
+.devlogin-chip:hover{color:var(--text);border-color:var(--muted)}
 
 .empty{text-align:center;color:var(--muted);padding:40px 20px;font-size:13.5px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
