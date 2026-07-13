@@ -229,34 +229,49 @@ export function weekMeta(d: Date): { num: number; total: number; phase: string; 
 }
 
 /* ---------- alimentación diaria (casi siempre lo mismo) ----------
-   Catálogo de alimentos (kcal por ración habitual) + comidas planificadas que
-   los referencian por id. El registro diario guarda solo las desviaciones:
-   qué alimento planificado NO se comió (skip) y qué extra se añadió (add). */
-export type Food = { id: string; name: string; kcal: number };
+   Catálogo de alimentos (kcal por ración/unidad) + comidas planificadas que
+   los referencian por id. `unit` = alimento contable (kcal por unidad), con un
+   contador de cantidad. El registro diario guarda solo lo que marcas como
+   comido, las cantidades que cambies y los extras añadidos. */
+export type Food = { id: string; name: string; kcal: number; unit?: boolean };
 export const FOODS: Food[] = [
   { id: "banana", name: "Plátano", kcal: 105 },
   { id: "shake_creatina", name: "Batido de proteína + creatina", kcal: 175 },
   { id: "shake", name: "Batido de proteína", kcal: 150 },
-  { id: "huevos2", name: "2 huevos + 2 claras", kcal: 180 },
+  { id: "huevo", name: "Huevo", kcal: 72, unit: true },
+  { id: "clara", name: "Clara", kcal: 17, unit: true },
   { id: "atun", name: "Lata de atún", kcal: 130 },
-  { id: "galletas_arroz_mani", name: "4–6 galletas de arroz con manteca de maní", kcal: 320 },
-  { id: "huevos3_avena", name: "3 huevos + 3 claras con avena", kcal: 470 },
+  { id: "galleta_arroz_mani", name: "Galleta de arroz con maní", kcal: 65, unit: true },
+  { id: "avena", name: "Avena", kcal: 150 },
   { id: "verduras", name: "Muchas verduras", kcal: 80 },
-  { id: "carbo_cena", name: "Arroz / fideos int. / batatas / papas", kcal: 300 },
-  { id: "proteina_cena", name: "Carne / pollo / pescado", kcal: 260 },
+  { id: "arroz", name: "Arroz", kcal: 200 },
+  { id: "fideos_int", name: "Fideos integrales", kcal: 200 },
+  { id: "batata", name: "Batata", kcal: 180 },
+  { id: "papa", name: "Papa", kcal: 160 },
+  { id: "carne", name: "Carne", kcal: 250 },
+  { id: "pollo", name: "Pollo", kcal: 230 },
+  { id: "pescado", name: "Pescado", kcal: 200 },
 ];
 
-export type Meal = { id: string; name: string; tag: string; foods: string[] };
+// item planificado de una comida: id + cantidad por defecto (unit) + grupo opcional (elige uno)
+export type MealItem = { id: string; qty?: number; group?: string };
+export type Meal = { id: string; name: string; tag: string; foods: MealItem[] };
 export const MEALS: Meal[] = [
-  { id: "pre_am", name: "Pre-entreno · mañana", tag: "Antes de entrenar", foods: ["banana", "shake_creatina"] },
-  { id: "desayuno", name: "Desayuno", tag: "Post-entreno", foods: ["huevos2", "atun", "galletas_arroz_mani"] },
-  { id: "almuerzo", name: "Almuerzo", tag: "Mediodía", foods: ["huevos3_avena", "verduras"] },
-  { id: "merienda", name: "Merienda · pre-entreno", tag: "Antes de entrenar", foods: ["banana", "shake"] },
-  { id: "cena", name: "Cena", tag: "Noche", foods: ["carbo_cena", "proteina_cena", "verduras"] },
+  { id: "pre_am", name: "Pre-entreno · mañana", tag: "Antes de entrenar", foods: [{ id: "banana" }, { id: "shake_creatina" }] },
+  { id: "desayuno", name: "Desayuno", tag: "Post-entreno", foods: [{ id: "huevo", qty: 2 }, { id: "clara", qty: 2 }, { id: "atun" }, { id: "galleta_arroz_mani", qty: 5 }] },
+  { id: "almuerzo", name: "Almuerzo", tag: "Mediodía", foods: [{ id: "huevo", qty: 3 }, { id: "clara", qty: 3 }, { id: "avena" }, { id: "verduras" }] },
+  { id: "merienda", name: "Merienda · pre-entreno", tag: "Antes de entrenar", foods: [{ id: "banana" }, { id: "shake" }] },
+  {
+    id: "cena", name: "Cena", tag: "Noche", foods: [
+      { id: "arroz", group: "Carbohidrato" }, { id: "fideos_int", group: "Carbohidrato" }, { id: "batata", group: "Carbohidrato" }, { id: "papa", group: "Carbohidrato" },
+      { id: "carne", group: "Proteína" }, { id: "pollo", group: "Proteína" }, { id: "pescado", group: "Proteína" },
+      { id: "verduras" },
+    ],
+  },
 ];
 
-// desviaciones de un día: por comida, planificados no comidos + extras añadidos
-export type MealLog = { skip?: string[]; add?: string[] };
+// registro de un día: por comida, planificados comidos + cantidades cambiadas + extras
+export type MealLog = { eaten?: string[]; add?: string[]; qty?: Record<string, number> };
 export type FoodDay = Record<string, MealLog>;
 
 export function foodsById(custom: Food[] = []): Record<string, Food> {
@@ -264,11 +279,19 @@ export function foodsById(custom: Food[] = []): Record<string, Food> {
   for (const f of [...FOODS, ...custom]) m[f.id] = f;
   return m;
 }
-// kcal de una comida en un día concreto (planificados menos skip, más extras)
+// cantidad efectiva de un item contable: la que hayas fijado, o la del plan, o 1
+export function itemQty(item: MealItem, log: MealLog | undefined): number {
+  return log?.qty?.[item.id] ?? item.qty ?? 1;
+}
+// kcal de una comida en un día concreto (planificados comidos × cantidad, más extras)
 export function mealKcal(meal: Meal, log: MealLog | undefined, byId: Record<string, Food>): number {
-  const skip = new Set(log?.skip || []);
+  const eaten = new Set(log?.eaten || []);
   let kcal = 0;
-  for (const fid of meal.foods) if (!skip.has(fid)) kcal += byId[fid]?.kcal ?? 0;
+  for (const it of meal.foods) {
+    if (!eaten.has(it.id)) continue;
+    const f = byId[it.id];
+    kcal += (f?.kcal ?? 0) * (f?.unit ? itemQty(it, log) : 1);
+  }
   for (const fid of log?.add || []) kcal += byId[fid]?.kcal ?? 0;
   return kcal;
 }

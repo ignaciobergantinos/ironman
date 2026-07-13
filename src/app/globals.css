@@ -118,8 +118,20 @@ input,textarea,select{font-family:inherit}
 .picker button:hover{border-color:var(--border-strong)}
 
 /* alimentación */
-.food-list{display:flex;flex-direction:column;gap:11px;margin-bottom:12px}
-.food-row .sess-sub{color:var(--faint)}
+.food-list{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.food-row{display:flex;align-items:center;gap:10px}
+.food-main{flex:1;min-width:0;display:flex;align-items:center;gap:11px;text-align:left}
+.food-row.done .check{background:var(--good);border-color:var(--good);color:#fff}
+.food-name{font-weight:700;font-size:13.5px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.food-row.done .food-name{color:var(--text)}
+.qty{flex:0 0 auto;display:flex;align-items:center;gap:7px}
+.qty button{width:26px;height:26px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:16px;font-weight:700;display:grid;place-items:center;line-height:1}
+.qty button:hover{border-color:var(--accent);color:var(--accent)}
+.qty b{min-width:14px;text-align:center;font-size:13px;font-weight:800}
+.food-kcal{flex:0 0 auto;font-size:12px;font-weight:800;color:var(--faint);display:flex;align-items:baseline;gap:3px}
+.food-kcal i{font-style:normal;font-size:9.5px;font-weight:700}
+.food-row.done .food-kcal{color:var(--text)}
+.food-group{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:5px 0 -2px}
 .food-extra-tag{margin-left:7px;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);padding:1px 6px;border-radius:20px;vertical-align:middle}
 .food-add{margin-top:2px}
 .food-pick{margin-bottom:10px}
@@ -286,3 +298,10 @@ textarea.notes:focus{border-color:var(--accent);background:var(--surface)}
 
 .empty{text-align:center;color:var(--muted);padding:40px 20px;font-size:13.5px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* botón Editar / Guardar / Cancelar de la tarjeta de stats */
+.editbtn{font-size:12px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:8px}
+.editbtn:hover{background:var(--surface-2)}
+.editbtn.muted{color:var(--muted)}
+.editbtn.accent{color:var(--bg);background:var(--accent)}
+.editbtn.accent:hover{filter:brightness(1.08)}

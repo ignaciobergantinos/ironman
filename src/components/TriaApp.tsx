@@ -1,12 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useStore, type Store, type ImportEntry } from "@/lib/store";
 import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
 import {
-  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, mealKcal, dayKcal, dayDef, weekMeta, DOW_LONG, MONTHS,
+  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, mealKcal, dayKcal, itemQty, dayDef, weekMeta, DOW_LONG, MONTHS,
   iso, mondayOf, addDays, fmtDate, derive, hasData,
   type Discipline, type Session, type LogData, type Food, type Meal, type MealLog,
 } from "@/lib/domain";
@@ -280,29 +280,58 @@ function FoodPicker({ foods, onPick, onCreate }: { foods: Food[]; onPick: (id: s
     </div>
   );
 }
-function FoodRow({ name, kcal, eaten, extra, onClick }: { name: string; kcal: number; eaten: boolean; extra?: boolean; onClick: () => void }) {
+function FoodRow({ name, kcal, eaten, extra, onClick, qty, onDec, onInc }: {
+  name: string; kcal: number; eaten: boolean; extra?: boolean; onClick: () => void;
+  qty?: number; onDec?: () => void; onInc?: () => void;
+}) {
   return (
-    <button className={"sess food-row" + (eaten ? " done" : "")} onClick={onClick}>
-      <span className="sess-main">
-        <span className="sess-name">{name}{extra && <b className="food-extra-tag">extra</b>}</span>
-        <span className="sess-sub">{kcal} kcal</span>
-      </span>
-      <span className="check"><Icon name={extra ? "x" : "check"} size={12} /></span>
-    </button>
+    <div className={"food-row" + (eaten ? " done" : "")}>
+      <button className="food-main" onClick={onClick}>
+        <span className="check"><Icon name={extra ? "x" : "check"} size={12} /></span>
+        <span className="food-name">{name}{extra && <b className="food-extra-tag">extra</b>}</span>
+      </button>
+      {qty != null && (
+        <div className="qty">
+          <button onClick={onDec} aria-label="Menos">−</button>
+          <b className="mono">{qty}</b>
+          <button onClick={onInc} aria-label="Más">+</button>
+        </div>
+      )}
+      <span className="food-kcal mono">{kcal}<i>kcal</i></span>
+    </div>
   );
 }
 function MealCard({ meal, log, date, byId, catalog, api }: {
   meal: Meal; log: MealLog | undefined; date: string; byId: Record<string, Food>; catalog: Food[]; api: ReturnType<typeof useStore>;
 }) {
-  const skip = new Set(log?.skip || []);
+  const eaten = new Set(log?.eaten || []);
   const kcal = mealKcal(meal, log, byId);
+  let lastGroup: string | undefined;
   return (
     <div className="card">
       <div className="card-lab"><span className="eyebrow">{meal.name}</span><span className="tag">{kcal} kcal</span></div>
       <div className="food-list">
-        {meal.foods.map((fid) => (
-          <FoodRow key={fid} name={byId[fid]?.name ?? fid} kcal={byId[fid]?.kcal ?? 0} eaten={!skip.has(fid)} onClick={() => api.toggleFoodPlanned(date, meal.id, fid)} />
-        ))}
+        {meal.foods.map((it) => {
+          const f = byId[it.id];
+          const isUnit = !!f?.unit;
+          const q = itemQty(it, log);
+          const header = it.group && it.group !== lastGroup ? it.group : null;
+          lastGroup = it.group;
+          return (
+            <Fragment key={it.id}>
+              {header && <div className="food-group">{header}</div>}
+              <FoodRow
+                name={f?.name ?? it.id}
+                kcal={(f?.kcal ?? 0) * (isUnit ? q : 1)}
+                eaten={eaten.has(it.id)}
+                onClick={() => api.toggleFoodPlanned(date, meal.id, it.id)}
+                qty={isUnit ? q : undefined}
+                onDec={() => api.setFoodQty(date, meal.id, it.id, q - 1)}
+                onInc={() => api.setFoodQty(date, meal.id, it.id, q + 1)}
+              />
+            </Fragment>
+          );
+        })}
         {(log?.add || []).map((fid, idx) => (
           <FoodRow key={"x" + idx} name={byId[fid]?.name ?? fid} kcal={byId[fid]?.kcal ?? 0} eaten extra onClick={() => api.removeFoodExtra(date, meal.id, idx)} />
         ))}
@@ -329,7 +358,7 @@ function FoodView({ api }: { api: ReturnType<typeof useStore> }) {
       </div>
       <div className="adh">
         <div className="ring" style={{ background: "var(--accent)" }}><b style={{ color: "var(--accent)" }}><Icon name="food" size={19} /></b></div>
-        <div className="adh-txt"><div className="big mono">{total} kcal</div><div className="small">total del día · ajusta lo que cambie</div></div>
+        <div className="adh-txt"><div className="big mono">{total} kcal</div><div className="small">total del día · marca lo que comas</div></div>
       </div>
       {MEALS.map((m) => <MealCard key={m.id} meal={m} log={dayLog?.[m.id]} date={k} byId={byId} catalog={catalog} api={api} />)}
     </>
@@ -542,10 +571,18 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
   const slotLabel = s.kind === "extra" ? "Sesión extra" : s.slot === "am" ? "Mañana" : "Tarde";
   // si hay actividad sincronizada, prerrellena los campos pero SIEMPRE editables (el usuario
   // corrige, p.ej. la distancia de cinta/rodillo que viene mal). Lo que edite gana sobre el auto.
+  // la actividad sincronizada solo prerrellena; el valor guardado (l) manda
   const autoLog = act && !s.routine ? actToLog(act, s.disc) : null;
-  const fieldVal = (k: keyof LogData) => (l[k] ?? autoLog?.[k] ?? "") as string;
-  const der = s.routine ? null : derive(s.disc, { ...autoLog, ...l });
   const fields = FIELDS[s.disc] || FIELDS.run;
+  const fieldVal = (k: keyof LogData) => (l[k] ?? autoLog?.[k] ?? "") as string;
+  // edición explícita de stats con borrador local (evita que se rellene solo con el valor previo).
+  // Arranca en modo edición si la sesión está vacía; si ya hay datos, se ve y hay que pulsar "Editar".
+  const [statsEditing, setStatsEditing] = useState(() => !s.routine && !fields.some((f) => fieldVal(f.k as keyof LogData) !== ""));
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const startEdit = () => { const d0: Record<string, string> = {}; fields.forEach((f) => { d0[f.k] = fieldVal(f.k as keyof LogData); }); setDraft(d0); setStatsEditing(true); };
+  const saveEdit = () => { fields.forEach((f) => { const v = (draft[f.k] ?? "").trim(); api.setField(id, f.k as keyof LogData, v === "" ? null : draft[f.k]); }); setStatsEditing(false); };
+  const cancelEdit = () => setStatsEditing(false);
+  const der = s.routine ? null : derive(s.disc, (statsEditing ? draft : { ...autoLog, ...l }) as LogData);
   const toggleEx = (i: number) => setOpenEx((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
   return (
@@ -625,13 +662,26 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
                 </div>
               )}
               <div className="card">
-                <div className="card-lab"><span className="eyebrow">Tus datos</span>{autoLog && <span className="tag">{act!.name ?? act!.type}</span>}</div>
+                <div className="card-lab">
+                  <span className="eyebrow">Tus datos</span>
+                  {autoLog && !statsEditing && <span className="tag">{act!.name ?? act!.type}</span>}
+                  {!statsEditing ? (
+                    <button type="button" className="editbtn" style={{ marginLeft: "auto" }} onClick={startEdit}>Editar</button>
+                  ) : (
+                    <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                      <button type="button" className="editbtn muted" onClick={cancelEdit}>Cancelar</button>
+                      <button type="button" className="editbtn accent" onClick={saveEdit}>Guardar</button>
+                    </span>
+                  )}
+                </div>
                 <div className="stats">
                   {fields.map((f) => (
-                    <div className="field" key={f.k}>
+                    <div className={"field" + (statsEditing ? "" : " derived")} key={f.k}>
                       <label>{f.l}</label>
                       <div className="inp">
-                        <input inputMode={f.time ? "text" : "decimal"} value={fieldVal(f.k as keyof LogData)} placeholder={f.ph} onChange={(ev) => api.setField(id, f.k as keyof LogData, ev.target.value === "" ? null : ev.target.value)} />
+                        <input className={statsEditing ? undefined : "mono"} readOnly={!statsEditing} inputMode={f.time ? "text" : "decimal"}
+                          value={statsEditing ? (draft[f.k] ?? "") : fieldVal(f.k as keyof LogData)} placeholder={f.ph}
+                          onChange={statsEditing ? (ev) => setDraft((prev) => ({ ...prev, [f.k]: ev.target.value })) : undefined} />
                         <span className="unit">{f.u}</span>
                       </div>
                     </div>

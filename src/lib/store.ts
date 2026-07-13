@@ -264,7 +264,7 @@ export function useStore(userId: string) {
       const s = { ...storeRef.current, foodLog: { ...storeRef.current.foodLog } };
       const day: FoodDay = { ...(s.foodLog[date] || {}) };
       const next = fn({ ...(day[mealId] || {}) });
-      if ((next.skip?.length || 0) === 0 && (next.add?.length || 0) === 0) delete day[mealId];
+      if ((next.eaten?.length || 0) === 0 && (next.add?.length || 0) === 0 && Object.keys(next.qty || {}).length === 0) delete day[mealId];
       else day[mealId] = next;
       s.foodLog[date] = day;
       commit(s);
@@ -273,14 +273,23 @@ export function useStore(userId: string) {
     [commit, markDirty],
   );
 
-  // marca/desmarca un alimento planificado como comido (por defecto se asume comido)
+  // marca/desmarca un alimento planificado como comido (por defecto nada está comido)
   const toggleFoodPlanned = useCallback(
     (date: string, mealId: string, foodId: string) => {
       updateMealLog(date, mealId, (m) => {
-        const skip = new Set(m.skip || []);
-        skip.has(foodId) ? skip.delete(foodId) : skip.add(foodId);
-        return { ...m, skip: [...skip] };
+        const eaten = new Set(m.eaten || []);
+        eaten.has(foodId) ? eaten.delete(foodId) : eaten.add(foodId);
+        return { ...m, eaten: [...eaten] };
       });
+    },
+    [updateMealLog],
+  );
+
+  // fija la cantidad de un alimento contable (huevos, claras, galletas…) en 1..99
+  const setFoodQty = useCallback(
+    (date: string, mealId: string, foodId: string, qty: number) => {
+      const q = Math.max(1, Math.min(99, Math.round(qty)));
+      updateMealLog(date, mealId, (m) => ({ ...m, qty: { ...(m.qty || {}), [foodId]: q } }));
     },
     [updateMealLog],
   );
@@ -436,6 +445,6 @@ export function useStore(userId: string) {
     await supabase.from("training_entries").delete().eq("user_id", userId);
   }, [commit, supabase, userId]);
 
-  return { store, sync, getLog, setField, setSet, toggleDone, toggleFoodPlanned, addFoodExtra, removeFoodExtra, addCustomFood, addExtra, delExtra, importActivities, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
+  return { store, sync, getLog, setField, setSet, toggleDone, toggleFoodPlanned, setFoodQty, addFoodExtra, removeFoodExtra, addCustomFood, addExtra, delExtra, importActivities, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
 }
 export type UseStore = ReturnType<typeof useStore>;
