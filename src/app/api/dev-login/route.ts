@@ -1,12 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { LOCAL_MOCK } from "@/lib/local-mock";
 
 // SOLO desarrollo local: inicia sesión como cualquier email sin SSO.
 // Bloqueado en producción (NODE_ENV === 'production' -> 404) para no ser un agujero de seguridad.
 export async function GET(request: NextRequest) {
   if (process.env.NODE_ENV === "production") {
     return new NextResponse("Not found", { status: 404 });
+  }
+  // En modo local total no hay Supabase: la app se abre directa, así que aquí solo redirigimos.
+  if (LOCAL_MOCK) {
+    return NextResponse.redirect(new URL("/", request.url));
   }
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) {

@@ -3,7 +3,15 @@ import { updateSession } from "@/lib/supabase/middleware";
 import { LOCAL_MOCK } from "@/lib/local-mock";
 
 export async function middleware(request: NextRequest) {
-  if (LOCAL_MOCK) return NextResponse.next(); // local sin Supabase: no hay auth que refrescar
+  if (LOCAL_MOCK) {
+    // local sin Supabase: no hay login, todo va directo a la app
+    if (request.nextUrl.pathname.startsWith("/login")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
   return await updateSession(request);
 }
 

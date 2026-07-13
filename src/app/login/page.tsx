@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Icon } from "@/lib/icons";
+import { LOCAL_MOCK } from "@/lib/local-mock";
 
 const DEV_EMAILS = ["ignaciobergantinos@gmail.com", "test@tria.local"];
 
@@ -17,14 +19,17 @@ function GoogleG() {
 }
 
 export default function LoginPage() {
+  const router = useRouter();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [isLocal, setIsLocal] = useState(false);
   const [devEmail, setDevEmail] = useState(DEV_EMAILS[0]);
 
   useEffect(() => {
+    // modo local total: no hay login, directo a la app
+    if (LOCAL_MOCK) { router.replace("/"); return; }
     setIsLocal(location.hostname === "localhost" || location.hostname === "127.0.0.1");
-  }, []);
+  }, [router]);
 
   async function google() {
     setBusy(true);
