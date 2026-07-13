@@ -233,31 +233,34 @@ export function weekMeta(d: Date): { num: number; total: number; phase: string; 
    los referencian por id. `unit` = alimento contable (kcal por unidad), con un
    contador de cantidad. El registro diario guarda solo lo que marcas como
    comido, las cantidades que cambies y los extras añadidos. */
-export type Food = { id: string; name: string; kcal: number; unit?: boolean };
+// valores (kcal, p=proteína, c=carbos, fat=grasas en g) = por unidad si `unit`,
+// por 100 g si `grams` (con esa ración por defecto), o fijos si ninguno
+export type Food = { id: string; name: string; kcal: number; p: number; c: number; fat: number; unit?: boolean; grams?: number };
 export const FOODS: Food[] = [
-  { id: "banana", name: "Plátano", kcal: 105 },
-  { id: "shake_creatina", name: "Batido de proteína + creatina", kcal: 175 },
-  { id: "shake", name: "Batido de proteína", kcal: 150 },
-  { id: "huevo", name: "Huevo", kcal: 72, unit: true },
-  { id: "clara", name: "Clara", kcal: 17, unit: true },
-  { id: "atun", name: "Lata de atún", kcal: 130 },
-  { id: "galleta_arroz_mani", name: "Galleta de arroz con maní", kcal: 65, unit: true },
-  { id: "avena", name: "Avena", kcal: 150 },
-  { id: "verduras", name: "Muchas verduras", kcal: 80 },
-  { id: "arroz", name: "Arroz", kcal: 200 },
-  { id: "fideos_int", name: "Fideos integrales", kcal: 200 },
-  { id: "batata", name: "Batata", kcal: 180 },
-  { id: "papa", name: "Papa", kcal: 160 },
-  { id: "carne", name: "Carne", kcal: 250 },
-  { id: "pollo", name: "Pollo", kcal: 230 },
-  { id: "pescado", name: "Pescado", kcal: 200 },
+  { id: "banana", name: "Banana", kcal: 105, p: 1.3, c: 24, fat: 0.4 },
+  { id: "shake_creatina", name: "Batido de proteína + creatina", kcal: 175, p: 30, c: 8, fat: 3 },
+  { id: "shake", name: "Batido de proteína", kcal: 150, p: 25, c: 8, fat: 2 },
+  { id: "huevo", name: "Huevo", kcal: 72, p: 6.3, c: 0.4, fat: 5, unit: true },
+  { id: "clara", name: "Clara", kcal: 17, p: 3.6, c: 0.2, fat: 0.1, unit: true },
+  { id: "atun", name: "Lata de atún", kcal: 130, p: 28, c: 0, fat: 2 },
+  { id: "galleta_arroz_mani", name: "Galleta de arroz con maní", kcal: 65, p: 2.5, c: 8, fat: 2.5, unit: true },
+  { id: "miel", name: "Miel", kcal: 304, p: 0.3, c: 82, fat: 0, grams: 20 },
+  { id: "avena", name: "Avena", kcal: 389, p: 13, c: 67, fat: 7, grams: 40 },
+  { id: "verduras", name: "Verduras", kcal: 35, p: 2, c: 6, fat: 0.3, grams: 200 },
+  { id: "arroz", name: "Arroz", kcal: 130, p: 2.7, c: 28, fat: 0.3, grams: 200 },
+  { id: "fideos_int", name: "Fideos integrales", kcal: 150, p: 5, c: 30, fat: 1, grams: 200 },
+  { id: "batata", name: "Batata", kcal: 86, p: 1.6, c: 20, fat: 0.1, grams: 200 },
+  { id: "papa", name: "Papa", kcal: 77, p: 2, c: 17, fat: 0.1, grams: 200 },
+  { id: "carne", name: "Carne", kcal: 200, p: 26, c: 0, fat: 11, grams: 150 },
+  { id: "pollo", name: "Pollo", kcal: 165, p: 31, c: 0, fat: 4, grams: 150 },
+  { id: "pescado", name: "Pescado", kcal: 120, p: 20, c: 0, fat: 4.5, grams: 150 },
 ];
 
 // item planificado de una comida: id + cantidad por defecto (unit) + grupo opcional (elige uno)
 export type MealItem = { id: string; qty?: number; group?: string };
 export type Meal = { id: string; name: string; tag: string; foods: MealItem[] };
 export const MEALS: Meal[] = [
-  { id: "pre_am", name: "Pre-entreno · mañana", tag: "Antes de entrenar", foods: [{ id: "banana" }, { id: "shake_creatina" }] },
+  { id: "pre_am", name: "Pre-entreno · mañana", tag: "Antes de entrenar", foods: [{ id: "banana" }, { id: "shake_creatina" }, { id: "miel" }] },
   { id: "desayuno", name: "Desayuno", tag: "Post-entreno", foods: [{ id: "huevo", qty: 2 }, { id: "clara", qty: 2 }, { id: "atun" }, { id: "galleta_arroz_mani", qty: 5 }] },
   { id: "almuerzo", name: "Almuerzo", tag: "Mediodía", foods: [{ id: "huevo", qty: 3 }, { id: "clara", qty: 3 }, { id: "avena" }, { id: "verduras" }] },
   { id: "merienda", name: "Merienda · pre-entreno", tag: "Antes de entrenar", foods: [{ id: "banana" }, { id: "shake" }] },
@@ -279,24 +282,30 @@ export function foodsById(custom: Food[] = []): Record<string, Food> {
   for (const f of [...FOODS, ...custom]) m[f.id] = f;
   return m;
 }
-// cantidad efectiva de un item contable: la que hayas fijado, o la del plan, o 1
-export function itemQty(item: MealItem, log: MealLog | undefined): number {
-  return log?.qty?.[item.id] ?? item.qty ?? 1;
+export type Macros = { kcal: number; p: number; c: number; fat: number };
+const ZERO: Macros = { kcal: 0, p: 0, c: 0, fat: 0 };
+const addMac = (a: Macros, b: Macros): Macros => ({ kcal: a.kcal + b.kcal, p: a.p + b.p, c: a.c + b.c, fat: a.fat + b.fat });
+
+// cantidad efectiva de un item: la que hayas fijado, la del plan, o la ración por defecto (unidades o gramos)
+export function itemAmount(item: MealItem, food: Food | undefined, log: MealLog | undefined): number {
+  return log?.qty?.[item.id] ?? item.qty ?? food?.grams ?? 1;
 }
-// kcal de una comida en un día concreto (planificados comidos × cantidad, más extras)
-export function mealKcal(meal: Meal, log: MealLog | undefined, byId: Record<string, Food>): number {
+// escala los macros de un alimento a una ración: por 100 g, por unidad o fija
+export function serving(food: Food | undefined, amount: number): Macros {
+  if (!food) return ZERO;
+  const s = food.grams != null ? amount / 100 : food.unit ? amount : 1;
+  return { kcal: food.kcal * s, p: food.p * s, c: food.c * s, fat: food.fat * s };
+}
+// macros de una comida en un día (planificados comidos × cantidad, más extras a ración por defecto)
+export function mealMacros(meal: Meal, log: MealLog | undefined, byId: Record<string, Food>): Macros {
   const eaten = new Set(log?.eaten || []);
-  let kcal = 0;
-  for (const it of meal.foods) {
-    if (!eaten.has(it.id)) continue;
-    const f = byId[it.id];
-    kcal += (f?.kcal ?? 0) * (f?.unit ? itemQty(it, log) : 1);
-  }
-  for (const fid of log?.add || []) kcal += byId[fid]?.kcal ?? 0;
-  return kcal;
+  let m = ZERO;
+  for (const it of meal.foods) if (eaten.has(it.id)) m = addMac(m, serving(byId[it.id], itemAmount(it, byId[it.id], log)));
+  for (const fid of log?.add || []) { const f = byId[fid]; m = addMac(m, serving(f, f?.grams ?? 1)); }
+  return m;
 }
-export function dayKcal(day: FoodDay | undefined, byId: Record<string, Food>): number {
-  return MEALS.reduce((sum, m) => sum + mealKcal(m, day?.[m.id], byId), 0);
+export function dayMacros(day: FoodDay | undefined, byId: Record<string, Food>): Macros {
+  return MEALS.reduce((s, m) => addMac(s, mealMacros(m, day?.[m.id], byId)), ZERO);
 }
 
 export const DOW_LONG = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];

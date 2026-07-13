@@ -288,7 +288,7 @@ export function useStore(userId: string) {
   // fija la cantidad de un alimento contable (huevos, claras, galletas…) en 1..99
   const setFoodQty = useCallback(
     (date: string, mealId: string, foodId: string, qty: number) => {
-      const q = Math.max(1, Math.min(99, Math.round(qty)));
+      const q = Math.max(1, Math.min(2000, Math.round(qty)));
       updateMealLog(date, mealId, (m) => ({ ...m, qty: { ...(m.qty || {}), [foodId]: q } }));
     },
     [updateMealLog],
@@ -308,7 +308,7 @@ export function useStore(userId: string) {
   const addCustomFood = useCallback(
     (name: string, kcal: number) => {
       const id = "c" + Date.now().toString(36);
-      const s = { ...storeRef.current, customFoods: [...storeRef.current.customFoods, { id, name, kcal }] };
+      const s = { ...storeRef.current, customFoods: [...storeRef.current.customFoods, { id, name, kcal, p: 0, c: 0, fat: 0 }] };
       commit(s);
       markDirty(FOOD_CAT_KEY);
       return id;

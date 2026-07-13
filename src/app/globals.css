@@ -118,20 +118,29 @@ input,textarea,select{font-family:inherit}
 .picker button:hover{border-color:var(--border-strong)}
 
 /* alimentación */
-.food-list{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.food-list{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
 .food-row{display:flex;align-items:center;gap:10px}
-.food-main{flex:1;min-width:0;display:flex;align-items:center;gap:11px;text-align:left}
+.food-txt{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:7px}
+.food-name{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%;text-align:left}
+.food-name-t{font-weight:700;font-size:13.5px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.food-row.done .food-name-t{color:var(--text)}
 .food-row.done .check{background:var(--good);border-color:var(--good);color:#fff}
-.food-name{font-weight:700;font-size:13.5px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
-.food-row.done .food-name{color:var(--text)}
-.qty{flex:0 0 auto;display:flex;align-items:center;gap:7px}
-.qty button{width:26px;height:26px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:16px;font-weight:700;display:grid;place-items:center;line-height:1}
+.qty{display:flex;align-items:center;gap:9px;margin-left:29px}
+.qty button{width:25px;height:25px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:16px;font-weight:700;display:grid;place-items:center;line-height:1}
 .qty button:hover{border-color:var(--accent);color:var(--accent)}
-.qty b{min-width:14px;text-align:center;font-size:13px;font-weight:800}
-.food-kcal{flex:0 0 auto;font-size:12px;font-weight:800;color:var(--faint);display:flex;align-items:baseline;gap:3px}
-.food-kcal i{font-style:normal;font-size:9.5px;font-weight:700}
-.food-row.done .food-kcal{color:var(--text)}
-.food-group{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:5px 0 -2px}
+.qty b{min-width:30px;text-align:center;font-size:13px;font-weight:800}
+/* columnas de macros al final de cada fila y en las cabeceras */
+.macros{flex:0 0 auto;display:flex;gap:9px}
+.mac{display:flex;flex-direction:column;align-items:flex-end;line-height:1.15;min-width:30px}
+.mac b{font-size:12.5px;font-weight:800;color:var(--muted)}
+.mac i{font-style:normal;font-size:8.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--faint)}
+.food-row.done .mac b{color:var(--text)}
+.macros.head{margin:0 0 12px;padding-bottom:11px;border-bottom:1px solid var(--border);gap:11px}
+.macros.head .mac b{font-size:14px;color:var(--text)}
+.macros.head .mac:first-child b{color:var(--accent)}
+.food-total{position:relative}
+.food-total .macros.head{border-bottom:none;margin:0;padding:0}
+.food-group{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:5px 0 -3px}
 .food-extra-tag{margin-left:7px;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);padding:1px 6px;border-radius:20px;vertical-align:middle}
 .food-add{margin-top:2px}
 .food-pick{margin-bottom:10px}

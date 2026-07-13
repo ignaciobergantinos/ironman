@@ -6,9 +6,9 @@ import { useStore, type Store, type ImportEntry } from "@/lib/store";
 import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
 import {
-  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, mealKcal, dayKcal, itemQty, dayDef, weekMeta, DOW_LONG, MONTHS,
+  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, dayDef, weekMeta, DOW_LONG, MONTHS,
   iso, mondayOf, addDays, fmtDate, derive, hasData,
-  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog,
+  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros,
 } from "@/lib/domain";
 
 /* ---------- pure helpers ---------- */
@@ -204,7 +204,7 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
     { k: "swim", lab: "Natación", val: Math.round(v.swim), u: "m" },
     { k: "gym", lab: "Gimnasio", val: v.gymDone, u: "sesiones" },
     { k: "walk", lab: "Caminata", val: v.walk.toFixed(1), u: "km" },
-    { k: "run", lab: "Adherencia", val: v.done, u: "/ " + v.total, accent: true },
+    { k: "run", lab: "Sesiones", val: v.done, u: "/ " + v.total, accent: true },
   ];
   const weeks: { mon: Date; done: number }[] = [];
   let max = 1;
@@ -267,7 +267,7 @@ function FoodPicker({ foods, onPick, onCreate }: { foods: Food[]; onPick: (id: s
       {open && (
         <div className="food-pick">
           <div className="picker">
-            {foods.map((f) => <button key={f.id} onClick={() => { onPick(f.id); setOpen(false); }}>{f.name} · {f.kcal}</button>)}
+            {foods.map((f) => <button key={f.id} onClick={() => { onPick(f.id); setOpen(false); }}>{f.name} · {Math.round(serving(f, f.grams ?? 1).kcal)}</button>)}
           </div>
           <div className="food-new">
             <input placeholder="Alimento nuevo" value={name} onChange={(e) => setName(e.target.value)} />
@@ -280,24 +280,38 @@ function FoodPicker({ foods, onPick, onCreate }: { foods: Food[]; onPick: (id: s
     </div>
   );
 }
-function FoodRow({ name, kcal, eaten, extra, onClick, qty, onDec, onInc }: {
-  name: string; kcal: number; eaten: boolean; extra?: boolean; onClick: () => void;
-  qty?: number; onDec?: () => void; onInc?: () => void;
+// bloque de 4 columnas al final de cada fila / cabecera: kcal | prot | carb | gras
+function MacroCols({ m, head }: { m: Macros; head?: boolean }) {
+  const r = (n: number) => Math.round(n);
+  return (
+    <div className={"macros" + (head ? " head" : "")}>
+      <span className="mac"><b className="mono">{r(m.kcal)}</b><i>kcal</i></span>
+      <span className="mac"><b className="mono">{r(m.p)}</b><i>prot</i></span>
+      <span className="mac"><b className="mono">{r(m.c)}</b><i>carb</i></span>
+      <span className="mac"><b className="mono">{r(m.fat)}</b><i>gras</i></span>
+    </div>
+  );
+}
+function FoodRow({ name, macros, eaten, extra, onClick, amount, unitLabel, onDec, onInc }: {
+  name: string; macros: Macros; eaten: boolean; extra?: boolean; onClick: () => void;
+  amount?: number; unitLabel?: string; onDec?: () => void; onInc?: () => void;
 }) {
   return (
     <div className={"food-row" + (eaten ? " done" : "")}>
-      <button className="food-main" onClick={onClick}>
-        <span className="check"><Icon name={extra ? "x" : "check"} size={12} /></span>
-        <span className="food-name">{name}{extra && <b className="food-extra-tag">extra</b>}</span>
-      </button>
-      {qty != null && (
-        <div className="qty">
-          <button onClick={onDec} aria-label="Menos">−</button>
-          <b className="mono">{qty}</b>
-          <button onClick={onInc} aria-label="Más">+</button>
-        </div>
-      )}
-      <span className="food-kcal mono">{kcal}<i>kcal</i></span>
+      <div className="food-txt">
+        <button className="food-name" onClick={onClick}>
+          <span className="check"><Icon name={extra ? "x" : "check"} size={12} /></span>
+          <span className="food-name-t">{name}{extra && <b className="food-extra-tag">extra</b>}</span>
+        </button>
+        {amount != null && (
+          <div className="qty">
+            <button onClick={onDec} aria-label="Menos">−</button>
+            <b className="mono">{amount}{unitLabel}</b>
+            <button onClick={onInc} aria-label="Más">+</button>
+          </div>
+        )}
+      </div>
+      <MacroCols m={macros} />
     </div>
   );
 }
@@ -305,16 +319,17 @@ function MealCard({ meal, log, date, byId, catalog, api }: {
   meal: Meal; log: MealLog | undefined; date: string; byId: Record<string, Food>; catalog: Food[]; api: ReturnType<typeof useStore>;
 }) {
   const eaten = new Set(log?.eaten || []);
-  const kcal = mealKcal(meal, log, byId);
   let lastGroup: string | undefined;
   return (
     <div className="card">
-      <div className="card-lab"><span className="eyebrow">{meal.name}</span><span className="tag">{kcal} kcal</span></div>
+      <div className="card-lab"><span className="eyebrow">{meal.name}</span></div>
+      <MacroCols m={mealMacros(meal, log, byId)} head />
       <div className="food-list">
         {meal.foods.map((it) => {
           const f = byId[it.id];
-          const isUnit = !!f?.unit;
-          const q = itemQty(it, log);
+          const gram = f?.grams != null;
+          const step = gram ? 10 : 1;
+          const amt = itemAmount(it, f, log);
           const header = it.group && it.group !== lastGroup ? it.group : null;
           lastGroup = it.group;
           return (
@@ -322,19 +337,21 @@ function MealCard({ meal, log, date, byId, catalog, api }: {
               {header && <div className="food-group">{header}</div>}
               <FoodRow
                 name={f?.name ?? it.id}
-                kcal={(f?.kcal ?? 0) * (isUnit ? q : 1)}
+                macros={serving(f, amt)}
                 eaten={eaten.has(it.id)}
                 onClick={() => api.toggleFoodPlanned(date, meal.id, it.id)}
-                qty={isUnit ? q : undefined}
-                onDec={() => api.setFoodQty(date, meal.id, it.id, q - 1)}
-                onInc={() => api.setFoodQty(date, meal.id, it.id, q + 1)}
+                amount={gram || f?.unit ? amt : undefined}
+                unitLabel={gram ? " g" : ""}
+                onDec={() => api.setFoodQty(date, meal.id, it.id, amt - step)}
+                onInc={() => api.setFoodQty(date, meal.id, it.id, amt + step)}
               />
             </Fragment>
           );
         })}
-        {(log?.add || []).map((fid, idx) => (
-          <FoodRow key={"x" + idx} name={byId[fid]?.name ?? fid} kcal={byId[fid]?.kcal ?? 0} eaten extra onClick={() => api.removeFoodExtra(date, meal.id, idx)} />
-        ))}
+        {(log?.add || []).map((fid, idx) => {
+          const f = byId[fid];
+          return <FoodRow key={"x" + idx} name={f?.name ?? fid} macros={serving(f, f?.grams ?? 1)} eaten extra onClick={() => api.removeFoodExtra(date, meal.id, idx)} />;
+        })}
       </div>
       <FoodPicker foods={catalog} onPick={(fid) => api.addFoodExtra(date, meal.id, fid)} onCreate={(n, k) => api.addFoodExtra(date, meal.id, api.addCustomFood(n, k))} />
     </div>
@@ -346,7 +363,7 @@ function FoodView({ api }: { api: ReturnType<typeof useStore> }) {
   const byId = foodsById(api.store.customFoods);
   const catalog = [...FOODS, ...api.store.customFoods];
   const dayLog = api.store.foodLog[k];
-  const total = dayKcal(dayLog, byId);
+  const total = dayMacros(dayLog, byId);
   const isToday = k === iso(new Date());
   return (
     <>
@@ -356,9 +373,10 @@ function FoodView({ api }: { api: ReturnType<typeof useStore> }) {
         <button className="navbtn" onClick={() => setDay(addDays(day, 1))} aria-label="Día siguiente"><Icon name="right" size={16} /></button>
         <button className="today-btn" onClick={() => { const d = new Date(); d.setHours(0, 0, 0, 0); setDay(d); }}>Hoy</button>
       </div>
-      <div className="adh">
+      <div className="adh food-total">
         <div className="ring" style={{ background: "var(--accent)" }}><b style={{ color: "var(--accent)" }}><Icon name="food" size={19} /></b></div>
-        <div className="adh-txt"><div className="big mono">{total} kcal</div><div className="small">total del día · marca lo que comas</div></div>
+        <div className="adh-txt"><div className="big mono">Total del día</div><div className="small">marca lo que comas</div></div>
+        <MacroCols m={total} head />
       </div>
       {MEALS.map((m) => <MealCard key={m.id} meal={m} log={dayLog?.[m.id]} date={k} byId={byId} catalog={catalog} api={api} />)}
     </>
