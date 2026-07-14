@@ -273,8 +273,9 @@ export const MEALS: Meal[] = [
   },
 ];
 
-// registro de un día: por comida, planificados comidos + cantidades cambiadas + extras
-export type MealLog = { eaten?: string[]; add?: string[]; qty?: Record<string, number> };
+// registro de un día: por comida, planificados comidos + cantidades cambiadas + extras (con su cantidad)
+export type AddItem = { id: string; amt?: number };
+export type MealLog = { eaten?: string[]; add?: AddItem[]; qty?: Record<string, number> };
 export type FoodDay = Record<string, MealLog>;
 
 export function foodsById(custom: Food[] = []): Record<string, Food> {
@@ -301,7 +302,7 @@ export function mealMacros(meal: Meal, log: MealLog | undefined, byId: Record<st
   const eaten = new Set(log?.eaten || []);
   let m = ZERO;
   for (const it of meal.foods) if (eaten.has(it.id)) m = addMac(m, serving(byId[it.id], itemAmount(it, byId[it.id], log)));
-  for (const fid of log?.add || []) { const f = byId[fid]; m = addMac(m, serving(f, f?.grams ?? 1)); }
+  for (const a of log?.add || []) { const f = byId[a.id]; m = addMac(m, serving(f, a.amt ?? f?.grams ?? 1)); }
   return m;
 }
 export function dayMacros(day: FoodDay | undefined, byId: Record<string, Food>): Macros {

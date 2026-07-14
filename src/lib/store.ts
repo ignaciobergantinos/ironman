@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Discipline, Intensity, LogData, Food, FoodDay, MealLog } from "@/lib/domain";
+import type { Discipline, Intensity, LogData, Food, FoodDay, MealLog, AddItem } from "@/lib/domain";
 import { DISC, hasData } from "@/lib/domain";
 import { LOCAL_MOCK } from "@/lib/local-mock";
 
@@ -25,6 +25,21 @@ const FOOD_CAT_KEY = "food:catalog";
 const foodDayKey = (date: string) => `food:${date}`;
 const empty = (): Store => ({ logs: {}, extras: {}, gymDefaults: {}, imported: {}, foodLog: {}, customFoods: [] });
 
+// normaliza extras guardados como string[] (formato viejo) al nuevo {id, amt?}
+function normFoodDay(day: unknown): FoodDay {
+  const out: FoodDay = {};
+  for (const [mid, m] of Object.entries((day as FoodDay) || {})) {
+    const raw = (m?.add || []) as unknown as (string | AddItem)[];
+    out[mid] = { ...m, add: raw.map((a) => (typeof a === "string" ? { id: a } : a)) };
+  }
+  return out;
+}
+function normFoodLog(fl: unknown): Record<string, FoodDay> {
+  const out: Record<string, FoodDay> = {};
+  for (const [date, day] of Object.entries((fl as Record<string, unknown>) || {})) out[date] = normFoodDay(day);
+  return out;
+}
+
 // Shrink a camera photo before upload: max 1280px, JPEG q0.7 → typically 100–250 KB.
 async function downscale(file: File): Promise<Blob> {
   const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
@@ -43,7 +58,7 @@ async function downscale(file: File): Promise<Blob> {
 function loadLocal(): Store {
   try {
     const r = localStorage.getItem(LS);
-    if (r) return { ...empty(), ...JSON.parse(r) };
+    if (r) { const s = { ...empty(), ...JSON.parse(r) }; s.foodLog = normFoodLog(s.foodLog); return s; }
   } catch {}
   return empty();
 }
@@ -83,7 +98,7 @@ function rowsToStore(rows: Row[], keepLocal: Store, dirty: Set<string>): Store {
     } else if (row.kind === "foodcat") {
       s.customFoods = (row.data as { foods: Food[] }).foods || [];
     } else if (row.kind === "foodday") {
-      s.foodLog[row.entry_key.slice(5)] = (row.data as FoodDay) || {};
+      s.foodLog[row.entry_key.slice(5)] = normFoodDay(row.data);
     } else {
       s.logs[row.entry_key] = row.data as LogData;
     }
@@ -294,13 +309,21 @@ export function useStore(userId: string) {
     [updateMealLog],
   );
 
-  // añade / quita un alimento extra (fuera del plan) a una comida
+  // añade / quita / ajusta un alimento extra (fuera del plan) con su cantidad (unidades o gramos)
   const addFoodExtra = useCallback(
-    (date: string, mealId: string, foodId: string) => updateMealLog(date, mealId, (m) => ({ ...m, add: [...(m.add || []), foodId] })),
+    (date: string, mealId: string, foodId: string, amt?: number) =>
+      updateMealLog(date, mealId, (m) => ({ ...m, add: [...(m.add || []), amt != null ? { id: foodId, amt } : { id: foodId }] })),
     [updateMealLog],
   );
   const removeFoodExtra = useCallback(
     (date: string, mealId: string, idx: number) => updateMealLog(date, mealId, (m) => ({ ...m, add: (m.add || []).filter((_, i) => i !== idx) })),
+    [updateMealLog],
+  );
+  const setExtraQty = useCallback(
+    (date: string, mealId: string, idx: number, amt: number) => {
+      const a = Math.max(1, Math.min(2000, Math.round(amt)));
+      updateMealLog(date, mealId, (m) => ({ ...m, add: (m.add || []).map((x, i) => (i === idx ? { ...x, amt: a } : x)) }));
+    },
     [updateMealLog],
   );
 
@@ -445,6 +468,6 @@ export function useStore(userId: string) {
     await supabase.from("training_entries").delete().eq("user_id", userId);
   }, [commit, supabase, userId]);
 
-  return { store, sync, getLog, setField, setSet, toggleDone, toggleFoodPlanned, setFoodQty, addFoodExtra, removeFoodExtra, addCustomFood, addExtra, delExtra, importActivities, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
+  return { store, sync, getLog, setField, setSet, toggleDone, toggleFoodPlanned, setFoodQty, addFoodExtra, removeFoodExtra, setExtraQty, addCustomFood, addExtra, delExtra, importActivities, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
 }
 export type UseStore = ReturnType<typeof useStore>;

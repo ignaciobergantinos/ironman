@@ -149,6 +149,14 @@ input,textarea,select{font-family:inherit}
 .food-new input:last-of-type{flex:0 0 68px}
 .food-new-add{flex:0 0 auto;width:36px;border:1px solid var(--border);background:var(--surface-2);border-radius:9px;color:var(--accent);display:grid;place-items:center}
 .food-new-add:hover{border-color:var(--accent)}
+.food-sel{display:flex;gap:7px;align-items:stretch}
+.food-sel select{flex:1;min-width:0;border:1px solid var(--border);background:var(--surface-2);border-radius:9px;padding:8px 11px;font-size:12.5px;font-weight:600;color:var(--text)}
+.food-amt{flex:0 0 78px;display:flex;align-items:center;gap:4px;border:1px solid var(--border);background:var(--surface-2);border-radius:9px;padding:0 10px}
+.food-amt input{width:100%;min-width:0;border:none;background:none;padding:8px 0;font-size:12.5px;color:var(--text);text-align:right;font-family:var(--mono)}
+.food-amt .unit{font-size:11px;color:var(--faint);font-weight:700}
+.food-add-btn{flex:0 0 auto;border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);border-radius:9px;padding:0 14px;font-size:12.5px;font-weight:800}
+.food-link{margin-top:9px;font-size:12px;font-weight:700;color:var(--muted)}
+.food-link:hover{color:var(--accent)}
 
 .overlay{position:fixed;inset:0;z-index:60;background:rgba(10,13,18,.5);backdrop-filter:blur(2px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
 .overlay.open{opacity:1;pointer-events:auto}

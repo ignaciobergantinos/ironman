@@ -252,28 +252,54 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
 /* ---------- food view (alimentación diaria) ----------
    Por defecto se asume que comiste lo planificado; solo registras las
    desviaciones: desmarca lo que no comiste, añade lo que comiste de más. */
-function FoodPicker({ foods, onPick, onCreate }: { foods: Food[]; onPick: (id: string) => void; onCreate: (name: string, kcal: number) => void }) {
+function FoodPicker({ foods, onAdd, onCreate }: { foods: Food[]; onAdd: (id: string, amt?: number) => void; onCreate: (name: string, kcal: number) => void }) {
   const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState("");
+  const [amt, setAmt] = useState("");
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [kcal, setKcal] = useState("");
+  const selFood = foods.find((f) => f.id === sel) ?? foods[0];
+  const gram = selFood?.grams != null;
+  const hasAmt = gram || !!selFood?.unit;
+  const defAmt = gram ? selFood!.grams! : 1;
+  const add = () => {
+    if (!selFood) return;
+    const a = amt ? parseInt(amt, 10) : defAmt;
+    onAdd(selFood.id, hasAmt ? a : undefined);
+    setAmt(""); setSel(""); setOpen(false);
+  };
   const create = () => {
     const k = parseInt(kcal, 10);
     if (!name.trim() || !(k > 0)) return;
     onCreate(name.trim(), k);
-    setName(""); setKcal(""); setOpen(false);
+    setName(""); setKcal(""); setCreating(false);
   };
   return (
     <div className="food-add">
       {open && (
         <div className="food-pick">
-          <div className="picker">
-            {foods.map((f) => <button key={f.id} onClick={() => { onPick(f.id); setOpen(false); }}>{f.name} · {Math.round(serving(f, f.grams ?? 1).kcal)}</button>)}
-          </div>
-          <div className="food-new">
-            <input placeholder="Alimento nuevo" value={name} onChange={(e) => setName(e.target.value)} />
-            <input inputMode="numeric" placeholder="kcal" value={kcal} onChange={(e) => setKcal(e.target.value)} />
-            <button className="food-new-add" onClick={create} aria-label="Crear alimento"><Icon name="plus" size={15} /></button>
-          </div>
+          {!creating ? (
+            <div className="food-sel">
+              <select value={selFood?.id ?? ""} onChange={(e) => { setSel(e.target.value); setAmt(""); }}>
+                {foods.map((f) => <option key={f.id} value={f.id}>{f.name} · {Math.round(serving(f, f.grams ?? 1).kcal)} kcal</option>)}
+              </select>
+              {hasAmt && (
+                <div className="food-amt">
+                  <input inputMode="numeric" placeholder={String(defAmt)} value={amt} onChange={(e) => setAmt(e.target.value)} />
+                  {gram && <span className="unit">g</span>}
+                </div>
+              )}
+              <button className="food-add-btn" onClick={add}>Añadir</button>
+            </div>
+          ) : (
+            <div className="food-new">
+              <input placeholder="Alimento nuevo" value={name} onChange={(e) => setName(e.target.value)} />
+              <input inputMode="numeric" placeholder="kcal" value={kcal} onChange={(e) => setKcal(e.target.value)} />
+              <button className="food-new-add" onClick={create} aria-label="Crear alimento"><Icon name="plus" size={15} /></button>
+            </div>
+          )}
+          <button className="food-link" onClick={() => setCreating((c) => !c)}>{creating ? "← elegir del catálogo" : "+ crear alimento nuevo"}</button>
         </div>
       )}
       <button className="addbtn" onClick={() => setOpen((o) => !o)}><Icon name="plus" size={15} /> Comí algo más</button>
@@ -348,12 +374,23 @@ function MealCard({ meal, log, date, byId, catalog, api }: {
             </Fragment>
           );
         })}
-        {(log?.add || []).map((fid, idx) => {
-          const f = byId[fid];
-          return <FoodRow key={"x" + idx} name={f?.name ?? fid} macros={serving(f, f?.grams ?? 1)} eaten extra onClick={() => api.removeFoodExtra(date, meal.id, idx)} />;
+        {(log?.add || []).map((a, idx) => {
+          const f = byId[a.id];
+          const gram = f?.grams != null;
+          const amount = gram || f?.unit;
+          const amt = a.amt ?? (gram ? f!.grams! : 1);
+          const step = gram ? 10 : 1;
+          return (
+            <FoodRow key={"x" + idx} name={f?.name ?? a.id} macros={serving(f, amount ? amt : 1)} eaten extra
+              onClick={() => api.removeFoodExtra(date, meal.id, idx)}
+              amount={amount ? amt : undefined} unitLabel={gram ? " g" : ""}
+              onDec={() => api.setExtraQty(date, meal.id, idx, amt - step)}
+              onInc={() => api.setExtraQty(date, meal.id, idx, amt + step)}
+            />
+          );
         })}
       </div>
-      <FoodPicker foods={catalog} onPick={(fid) => api.addFoodExtra(date, meal.id, fid)} onCreate={(n, k) => api.addFoodExtra(date, meal.id, api.addCustomFood(n, k))} />
+      <FoodPicker foods={catalog} onAdd={(fid, amt) => api.addFoodExtra(date, meal.id, fid, amt)} onCreate={(n, k) => api.addFoodExtra(date, meal.id, api.addCustomFood(n, k))} />
     </div>
   );
 }
