@@ -3,6 +3,9 @@ import { updateSession } from "@/lib/supabase/middleware";
 import { LOCAL_MOCK } from "@/lib/local-mock";
 
 export async function middleware(request: NextRequest) {
+  // ruta pública de solo lectura: sin sesión, no pasa por el login
+  if (request.nextUrl.pathname.startsWith("/api/coach")) return NextResponse.next();
+
   if (LOCAL_MOCK) {
     // local sin Supabase: no hay login, todo va directo a la app
     if (request.nextUrl.pathname.startsWith("/login")) {

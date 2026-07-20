@@ -82,3 +82,14 @@ create policy "photos: insert own" on storage.objects
   for insert with check (bucket_id = 'training-photos' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "photos: delete own" on storage.objects
   for delete using (bucket_id = 'training-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ---------------------------------------------------------------------------
+-- Lectura pública para /api/coach (asistente externo que planifica las semanas).
+-- Solo SELECT y solo las filas de este usuario: la ruta usa la clave anon, así
+-- que no puede escribir nada aunque la URL sea pública.
+-- Sustituye el uuid por el tuyo:  select id, email from auth.users;
+drop policy if exists "coach: public read" on public.training_entries;
+
+create policy "coach: public read" on public.training_entries
+  for select to anon
+  using (user_id = '00000000-0000-0000-0000-000000000000'::uuid);
