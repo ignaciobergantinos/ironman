@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Discipline, Intensity, LogData, Food, FoodDay, MealLog, AddItem } from "@/lib/domain";
-import { DISC, hasData } from "@/lib/domain";
+import type { Discipline, Intensity, LogData, Food, FoodDay, MealLog, AddItem, WeekMap } from "@/lib/domain";
+import { DISC, hasData, isIdentityMap } from "@/lib/domain";
 import { LOCAL_MOCK } from "@/lib/local-mock";
 
 export type ExtraDef = { id: string; disc: Discipline; name: string; intensity: Intensity };
@@ -10,7 +10,8 @@ export type SetVal = { kg?: string | null; reps?: string | null };
 // gymDefaults[routineKey][exerciseIndex] = valores de la 1ª serie, plantilla para futuras sesiones
 // imported: ids de actividades ya volcadas en el registro (para no reimportar ni resucitar borradas)
 // foodLog: desviaciones de la dieta por día; customFoods: alimentos añadidos por el usuario al catálogo
-export type Store = { logs: Record<string, LogData>; extras: Record<string, ExtraDef[]>; gymDefaults: Record<string, Record<number, SetVal>>; imported: Record<string, true>; foodLog: Record<string, FoodDay>; customFoods: Food[] };
+// weekmap: reordenación de días por semana (clave = lunes ISO, valor = permutación de dow → dow origen)
+export type Store = { logs: Record<string, LogData>; extras: Record<string, ExtraDef[]>; gymDefaults: Record<string, Record<number, SetVal>>; imported: Record<string, true>; foodLog: Record<string, FoodDay>; customFoods: Food[]; weekmap: Record<string, WeekMap> };
 export type SyncState = "loading" | "synced" | "saving" | "offline";
 
 // una actividad a volcar en el registro: sesión planificada (sin extra) o extra autogenerado
@@ -23,7 +24,8 @@ const GYM_DEF_KEY = "gym:defaults";
 const IMPORTED_KEY = "activities:imported";
 const FOOD_CAT_KEY = "food:catalog";
 const foodDayKey = (date: string) => `food:${date}`;
-const empty = (): Store => ({ logs: {}, extras: {}, gymDefaults: {}, imported: {}, foodLog: {}, customFoods: [] });
+const weekMapKey = (mon: string) => `week:${mon}`;
+const empty = (): Store => ({ logs: {}, extras: {}, gymDefaults: {}, imported: {}, foodLog: {}, customFoods: [], weekmap: {} });
 
 // normaliza extras guardados como string[] (formato viejo) al nuevo {id, amt?}
 function normFoodDay(day: unknown): FoodDay {
@@ -99,6 +101,9 @@ function rowsToStore(rows: Row[], keepLocal: Store, dirty: Set<string>): Store {
       s.customFoods = (row.data as { foods: Food[] }).foods || [];
     } else if (row.kind === "foodday") {
       s.foodLog[row.entry_key.slice(5)] = normFoodDay(row.data);
+    } else if (row.kind === "weekmap") {
+      const map = (row.data as { map?: WeekMap }).map;
+      if (!isIdentityMap(map)) s.weekmap[row.entry_key.slice(5)] = map!;
     } else {
       s.logs[row.entry_key] = row.data as LogData;
     }
@@ -109,6 +114,7 @@ function rowsToStore(rows: Row[], keepLocal: Store, dirty: Set<string>): Store {
     if (key === IMPORTED_KEY) { s.imported = keepLocal.imported; continue; }
     if (key === FOOD_CAT_KEY) { s.customFoods = keepLocal.customFoods; continue; }
     if (key.startsWith("food:")) { const date = key.slice(5); if (keepLocal.foodLog[date]) s.foodLog[date] = keepLocal.foodLog[date]; continue; }
+    if (key.startsWith("week:")) { const mon = key.slice(5); if (keepLocal.weekmap[mon]) s.weekmap[mon] = keepLocal.weekmap[mon]; continue; }
     if (keepLocal.logs[key]) s.logs[key] = keepLocal.logs[key];
     for (const date of Object.keys(keepLocal.extras)) {
       const ex = keepLocal.extras[date]?.find((e) => e.id === key);
@@ -152,6 +158,9 @@ export function useStore(userId: string) {
       }
       if (key.startsWith("food:")) {
         return { entry_key: key, kind: "foodday", data: storeRef.current.foodLog[key.slice(5)] || {} };
+      }
+      if (key.startsWith("week:")) {
+        return { entry_key: key, kind: "weekmap", data: { map: storeRef.current.weekmap[key.slice(5)] || [] } };
       }
       const ex = isExtra(key);
       if (ex) {
@@ -271,6 +280,35 @@ export function useStore(userId: string) {
       commit(s);
       markDirty(id);
       return s.logs[id].done;
+    },
+    [commit, markDirty],
+  );
+
+  // intercambia el plan de dos días (dow, 0=dom..6=sáb) en la semana del lunes `mon` (ISO).
+  // Componer varios swaps permite cualquier orden. Si vuelve a la identidad, se elimina el override.
+  const swapDays = useCallback(
+    (mon: string, a: number, b: number) => {
+      if (a === b) return;
+      const cur = storeRef.current.weekmap[mon] || [0, 1, 2, 3, 4, 5, 6];
+      const next = [...cur];
+      [next[a], next[b]] = [next[b], next[a]];
+      const s = { ...storeRef.current, weekmap: { ...storeRef.current.weekmap } };
+      if (isIdentityMap(next)) delete s.weekmap[mon];
+      else s.weekmap[mon] = next;
+      commit(s);
+      markDirty(weekMapKey(mon));
+    },
+    [commit, markDirty],
+  );
+
+  // restablece una semana a la plantilla original (elimina cualquier reordenación).
+  const resetWeek = useCallback(
+    (mon: string) => {
+      if (!storeRef.current.weekmap[mon]) return;
+      const s = { ...storeRef.current, weekmap: { ...storeRef.current.weekmap } };
+      delete s.weekmap[mon];
+      commit(s);
+      markDirty(weekMapKey(mon));
     },
     [commit, markDirty],
   );
@@ -402,7 +440,7 @@ export function useStore(userId: string) {
 
   const importData = useCallback(
     async (obj: Store) => {
-      const s: Store = { logs: obj.logs || {}, extras: obj.extras || {}, gymDefaults: obj.gymDefaults || {}, imported: obj.imported || {}, foodLog: obj.foodLog || {}, customFoods: obj.customFoods || [] };
+      const s: Store = { logs: obj.logs || {}, extras: obj.extras || {}, gymDefaults: obj.gymDefaults || {}, imported: obj.imported || {}, foodLog: obj.foodLog || {}, customFoods: obj.customFoods || [], weekmap: obj.weekmap || {} };
       commit(s);
       const rows: Array<Record<string, unknown>> = [];
       if (Object.keys(s.gymDefaults).length) rows.push({ user_id: userId, entry_key: GYM_DEF_KEY, kind: "gymdef", data: s.gymDefaults, updated_at: new Date().toISOString() });
@@ -416,6 +454,7 @@ export function useStore(userId: string) {
       }
       if (s.customFoods.length) rows.push({ user_id: userId, entry_key: FOOD_CAT_KEY, kind: "foodcat", data: { foods: s.customFoods }, updated_at: new Date().toISOString() });
       for (const date of Object.keys(s.foodLog)) rows.push({ user_id: userId, entry_key: foodDayKey(date), kind: "foodday", data: s.foodLog[date], updated_at: new Date().toISOString() });
+      for (const mon of Object.keys(s.weekmap)) rows.push({ user_id: userId, entry_key: weekMapKey(mon), kind: "weekmap", data: { map: s.weekmap[mon] }, updated_at: new Date().toISOString() });
       if (rows.length) await supabase.from("training_entries").upsert(rows, { onConflict: "user_id,entry_key" });
     },
     [commit, supabase, userId],
@@ -470,6 +509,6 @@ export function useStore(userId: string) {
     await supabase.from("training_entries").delete().eq("user_id", userId);
   }, [commit, supabase, userId]);
 
-  return { store, sync, getLog, setField, setSet, toggleDone, toggleFoodPlanned, setFoodQty, addFoodExtra, removeFoodExtra, setExtraQty, addCustomFood, addExtra, delExtra, importActivities, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
+  return { store, sync, getLog, setField, setSet, toggleDone, swapDays, resetWeek, toggleFoodPlanned, setFoodQty, addFoodExtra, removeFoodExtra, setExtraQty, addCustomFood, addExtra, delExtra, importActivities, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
 }
 export type UseStore = ReturnType<typeof useStore>;

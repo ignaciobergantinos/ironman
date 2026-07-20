@@ -6,14 +6,18 @@ import { useStore, type Store, type ImportEntry } from "@/lib/store";
 import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
 import {
-  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, dayDef, weekMeta, DOW_LONG, MONTHS,
+  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, dayDefFor, weekMeta, DOW_LONG, MONTHS,
   iso, mondayOf, addDays, fmtDate, derive, hasData,
-  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros,
+  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap,
 } from "@/lib/domain";
 
 /* ---------- pure helpers ---------- */
-function templSessions(date: Date): Session[] {
-  const def = dayDef(date);
+// reordenación de días de la semana que contiene `date` (undefined = plantilla original)
+function mapFor(store: Store, date: Date): WeekMap | undefined {
+  return store.weekmap[iso(mondayOf(date))];
+}
+function templSessions(date: Date, map?: WeekMap | null): Session[] {
+  const def = dayDefFor(date, map);
   return (def ? def.sessions : []).map((s) => ({ ...s, id: iso(date) + ":" + s.slot, kind: "templ" as const, date: iso(date) }));
 }
 function extraSessions(date: Date, store: Store): Session[] {
@@ -22,7 +26,7 @@ function extraSessions(date: Date, store: Store): Session[] {
 }
 function findSession(id: string, store: Store): Session | null {
   const d = new Date(id.split(":")[0] + "T00:00:00");
-  const t = templSessions(d).find((s) => s.id === id);
+  const t = templSessions(d, mapFor(store, d)).find((s) => s.id === id);
   if (t) return t;
   return extraSessions(d, store).find((s) => s.id === id) ?? null;
 }
@@ -31,7 +35,7 @@ function weekVolume(mon: Date, store: Store): Vol {
   const v: Vol = { run: 0, bike: 0, swim: 0, walk: 0, gymDone: 0, done: 0, total: 0 };
   for (let i = 0; i < 7; i++) {
     const d = addDays(mon, i);
-    [...templSessions(d), ...extraSessions(d, store)].forEach((s) => {
+    [...templSessions(d, mapFor(store, d)), ...extraSessions(d, store)].forEach((s) => {
       v.total++;
       const l = store.logs[s.id];
       const dn = !!(l && l.done);
@@ -91,24 +95,35 @@ function AddExtra({ dateK, onAdd }: { dateK: string; onAdd: (disc: Discipline, d
 }
 
 /* ---------- week view ---------- */
-function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel }: {
+function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, onSwap, onResetWeek }: {
   cursor: Date; setCursor: (d: Date) => void; store: Store; todayISO: string;
   onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
+  onSwap: (mon: string, a: number, b: number) => void; onResetWeek: (mon: string) => void;
 }) {
   const start = cursor, end = addDays(start, 6);
+  const mon = iso(start);
+  const map = store.weekmap[mon];
+  const [editing, setEditing] = useState(false);
+  const [pick, setPick] = useState<number | null>(null);
   const sameMonth = start.getMonth() === end.getMonth();
   const title = sameMonth ? `${start.getDate()}–${end.getDate()} ${MONTHS[end.getMonth()]} ${end.getFullYear()}` : `${fmtDate(start)} – ${fmtDate(end)}`;
   let done = 0, total = 0;
   const mini: { n: number; done: number }[] = [];
   for (let i = 0; i < 7; i++) {
     const d = addDays(start, i);
-    const ss = [...templSessions(d), ...extraSessions(d, store)];
+    const ss = [...templSessions(d, map), ...extraSessions(d, store)];
     let dd = 0;
     ss.forEach((s) => { total++; if (store.logs[s.id]?.done) { done++; dd++; } });
     mini.push({ n: ss.length, done: dd });
   }
   const pct = total ? Math.round((done / total) * 100) : 0;
   const wm = weekMeta(start);
+  const tapDay = (dow: number) => {
+    if (pick == null) { setPick(dow); return; }
+    if (pick === dow) { setPick(null); return; }
+    onSwap(mon, pick, dow);
+    setPick(null);
+  };
   return (
     <>
       <div className="weeknav">
@@ -122,14 +137,30 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel }: 
         <div className="adh-txt"><div className="big mono">{done} / {total} sesiones</div><div className="small">completadas esta semana</div></div>
         <div className="miniweek">{mini.map((m, idx) => Array.from({ length: Math.max(m.n, 1) }).map((_, i) => <i key={idx + "-" + i} className={i < m.done ? "on" : ""} />))}</div>
       </div>
+      {wm && (
+        <div className="weekedit">
+          <button className={"weekedit-btn" + (editing ? " on" : "")} onClick={() => { setEditing((e) => !e); setPick(null); }}>
+            <Icon name={editing ? "check" : "cal"} size={14} /> {editing ? "Listo" : "Reordenar días"}
+          </button>
+          {editing && <span className="weekedit-hint">{pick == null ? "Toca dos días para intercambiarlos" : `${DOW_LONG[pick]} → toca con quién cambiarlo`}</span>}
+          {map && <button className="weekedit-reset" onClick={() => { onResetWeek(mon); setPick(null); }}>Restablecer</button>}
+        </div>
+      )}
       <div className="days">
         {Array.from({ length: 7 }).map((_, i) => {
-          const d = addDays(start, i), k = iso(d), def = dayDef(d);
+          const d = addDays(start, i), k = iso(d), def = dayDefFor(d, map);
+          const dow = d.getDay();
+          const srcDow = map ? map[dow] : dow;
           const isToday = k === todayISO;
-          const templ = templSessions(d), extra = extraSessions(d, store);
+          const templ = templSessions(d, map), extra = extraSessions(d, store);
           return (
-            <div key={k} className={"day" + (isToday ? " today" : "")}>
-              <div className="day-h"><span className="dow">{def.day}</span><span className="date">{fmtDate(d)}</span>{isToday && <span className="todaypill">Hoy</span>}</div>
+            <div key={k} className={"day" + (isToday ? " today" : "") + (editing ? " editing" : "") + (pick === dow ? " picked" : "")}>
+              <div className="day-h" {...(editing ? { role: "button", tabIndex: 0, onClick: () => tapDay(dow), style: { cursor: "pointer" } } : {})}>
+                {editing && <span className="swap-ic"><Icon name={pick === dow ? "check" : "chev"} size={14} /></span>}
+                <span className="dow">{def.day}</span><span className="date">{fmtDate(d)}</span>
+                {srcDow !== dow && <span className="swaptag">plan de {DOW_LONG[srcDow]}</span>}
+                {isToday && <span className="todaypill">Hoy</span>}
+              </div>
               {def.rest && templ.length === 0 && extra.length === 0 && (
                 <div className="restnote">Descanso o recuperación activa. Puedes añadir una caminata o nado suave.</div>
               )}
@@ -167,7 +198,7 @@ function TodayView({ store, onOpen, onAdd, onDel }: {
 }) {
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const k = iso(now);
-  const templ = templSessions(now), extra = extraSessions(now, store);
+  const templ = templSessions(now, mapFor(store, now)), extra = extraSessions(now, store);
   const all = [...templ, ...extra];
   return (
     <>
@@ -855,7 +886,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
     for (const a of byTime) {
       if (store.imported[a.id]) continue;
       const d = new Date(a.date + "T00:00:00");
-      const sessions = [...templSessions(d), ...extraSessions(d, store)];
+      const sessions = [...templSessions(d, mapFor(store, d)), ...extraSessions(d, store)];
       const seat = sessions.find((sn) => sn.disc === a.disc && !claimed.has(sn.id) && !sn.id.includes(":icu-"));
       const log: LogData = a.disc === "gym" ? { done: true } : { ...actToLog(a, a.disc), done: true };
       if (seat) {
@@ -884,7 +915,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
       </header>
 
       <main className={"wrap" + (view === "today" || view === "activity" ? " fill" : "")}>
-        {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
+        {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} onSwap={(m, a, b) => { api.swapDays(m, a, b); flash("Días cambiados"); }} onResetWeek={(m) => { api.resetWeek(m); flash("Semana restablecida"); }} />}
         {view === "today" && <TodayView store={store} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} onOpenAct={setOpenAct} />}
         {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} />}

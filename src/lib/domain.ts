@@ -222,6 +222,20 @@ export function dayDef(d: Date): DayDef {
   if (i == null) return { dow: d.getDay(), day: DOW_LONG[d.getDay()], rest: true, sessions: [] };
   return BUILT[i][d.getDay()];
 }
+// Reordenar días de una semana concreta: `map` (indexado por dow, 0=dom..6=sáb) da el dow de
+// origen cuyo plan se muestra en cada día natural. El nombre y la fecha del día siguen siendo los
+// reales; solo cambian las sesiones (y el descanso). El registro se mantiene por fecha natural.
+export type WeekMap = number[];
+export function isIdentityMap(m?: WeekMap | null): boolean {
+  return !m || m.every((v, i) => v === i);
+}
+export function dayDefFor(d: Date, map?: WeekMap | null): DayDef {
+  const i = planWeekIndex(d);
+  if (i == null || isIdentityMap(map)) return dayDef(d);
+  const real = BUILT[i][d.getDay()];
+  const src = BUILT[i][map![d.getDay()]];
+  return { dow: real.dow, day: real.day, rest: src.rest, sessions: src.sessions };
+}
 export function weekMeta(d: Date): { num: number; total: number; phase: string; recovery: boolean } | null {
   const i = planWeekIndex(d);
   if (i == null) return null;

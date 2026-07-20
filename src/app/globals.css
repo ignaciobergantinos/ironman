@@ -92,6 +92,20 @@ input,textarea,select{font-family:inherit}
 .day-h .dow{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
 .day-h .date{font-size:12px;color:var(--faint);font-weight:600;font-family:var(--mono)}
 .day-h .todaypill{margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);padding:3px 8px;border-radius:20px}
+.weekedit{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 2px 12px}
+.weekedit-btn{font-size:12.5px;font-weight:700;padding:7px 13px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);display:inline-flex;align-items:center;gap:6px}
+.weekedit-btn.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.weekedit-hint{font-size:12px;color:var(--muted);font-weight:600}
+.weekedit-reset{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted);background:none;border:none;text-decoration:underline}
+.weekedit-reset:hover{color:var(--text)}
+.day.editing{border-color:var(--border-strong)}
+.day.editing .day-h{background:var(--surface-2)}
+.day.editing .day-h:hover{background:var(--surface-3)}
+.day.picked{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),var(--shadow)}
+.day.picked .day-h{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.day-h .swap-ic{color:var(--faint);display:grid;place-items:center}
+.day.picked .day-h .swap-ic{color:var(--accent)}
+.day-h .swaptag{margin-left:8px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);padding:3px 8px;border-radius:20px}
 .slots{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin-top:9px}
 @media (max-width:520px){.slots{grid-template-columns:1fr}}
 .slot{background:var(--surface);padding:12px 15px;min-height:74px}
