@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useStore, type Store, type ImportEntry, type UseStore } from "@/lib/store";
 import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
-import { composeStatsImage, shareImage, type OverlayStat } from "@/lib/share-image";
+import { composeStatsImage, shareImage, downloadImage, type OverlayStat } from "@/lib/share-image";
 import {
   DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, dayDefFor, weekMeta, DOW_LONG, MONTHS,
   iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, RACE, weeksToRace, weekTarget,
@@ -747,12 +747,15 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
     if (hr) out.push({ label: "FC media", value: hr, unit: "ppm" });
     return out;
   }
-  async function shareWithStats(url: string) {
+  // `save` = guardar siempre en el dispositivo; si no, compartir (y descargar como respaldo)
+  async function shareWithStats(url: string, save = false) {
     setSharing(true);
     setShareErr(null);
     try {
       const blob = await composeStatsImage(url, s.name, dayLabel, overlayStats());
-      await shareImage(blob, `tria-${s.date}.jpg`);
+      const name = `tria-${s.date}.jpg`;
+      if (save) downloadImage(blob, name);
+      else await shareImage(blob, name);
     } catch {
       setShareErr("No se pudo generar la imagen");
     }
@@ -908,10 +911,16 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
         <div className="lightbox" onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="Foto de la sesión" />
           <button className="lightbox-close" onClick={() => setLightbox(null)} aria-label="Cerrar"><Icon name="x" size={18} /></button>
-          <button className="lightbox-share" disabled={sharing}
-            onClick={(ev) => { ev.stopPropagation(); void shareWithStats(lightbox); }}>
-            {sharing ? "Generando…" : shareErr ?? "Compartir con datos"}
-          </button>
+          <div className="lightbox-actions" onClick={(ev) => ev.stopPropagation()}>
+            <button className="lightbox-share" disabled={sharing}
+              onClick={() => void shareWithStats(lightbox)}>
+              {sharing ? "Generando…" : shareErr ?? "Compartir con datos"}
+            </button>
+            <button className="lightbox-save" disabled={sharing} title="Guardar en este dispositivo"
+              onClick={() => void shareWithStats(lightbox, true)}>
+              <Icon name="down" size={16} /> Guardar
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -980,7 +989,8 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
       const d = new Date(a.date + "T00:00:00");
       const sessions = [...templSessions(d, mapFor(store, d)), ...extraSessions(d, store)];
       const seat = sessions.find((sn) => sn.disc === a.disc && !claimed.has(sn.id) && !sn.id.includes(":icu-"));
-      const log: LogData = a.disc === "gym" ? { done: true } : { ...actToLog(a, a.disc), done: true };
+      // el gimnasio se registra por series, pero su duración sí interesa (cuenta en las horas)
+      const log: LogData = { ...actToLog(a, a.disc), done: true };
       if (seat) {
         claimed.add(seat.id);
         entries.push({ actId: a.id, id: seat.id, dateK: a.date, log });

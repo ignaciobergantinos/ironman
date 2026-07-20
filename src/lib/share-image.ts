@@ -113,6 +113,19 @@ export async function composeStatsImage(
 }
 
 // Comparte por la hoja nativa de iOS (PWA); si no hay, descarga el archivo.
+// Guarda el blob como descarga en el dispositivo (móvil o escritorio).
+export function downloadImage(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Safari necesita que la URL siga viva un instante tras el click
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 export async function shareImage(blob: Blob, filename: string): Promise<"shared" | "downloaded"> {
   const file = new File([blob], filename, { type: "image/jpeg" });
   if (navigator.canShare?.({ files: [file] })) {
@@ -123,11 +136,6 @@ export async function shareImage(blob: Blob, filename: string): Promise<"shared"
       if ((e as Error).name === "AbortError") return "shared"; // el usuario canceló
     }
   }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadImage(blob, filename);
   return "downloaded";
 }

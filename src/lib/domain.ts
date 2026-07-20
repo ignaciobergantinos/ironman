@@ -101,7 +101,8 @@ export const FIELDS: Record<Discipline, Field[]> = {
     { k: "time", l: "Tiempo", u: "h:mm:ss", time: true, ph: "0:00" },
     { k: "hr", l: "FC media", u: "ppm", ph: "—" },
   ],
-  gym: [], // el gimnasio se registra por rutina/series, no con estos campos
+  // el gimnasio se registra por rutina/series; solo la duración es útil aquí (suma en las horas)
+  gym: [{ k: "time", l: "Tiempo", u: "h:mm:ss", time: true, ph: "0:00" }],
 };
 
 /* ---------- plan de 6 semanas (maratón primero, intensidad en el agua) ---------- */

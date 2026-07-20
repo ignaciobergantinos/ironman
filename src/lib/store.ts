@@ -451,11 +451,19 @@ export function useStore(userId: string) {
         if (e.extra && !(s.extras[e.dateK] || []).some((x) => x.id === e.id)) {
           s.extras[e.dateK] = [...(s.extras[e.dateK] || []), e.extra];
         }
-        // no pisar datos ya introducidos por el usuario; el seed es solo un punto de partida
-        if (!hasData(s.logs[e.id])) {
-          s.logs[e.id] = { ...(s.logs[e.id] || {}), ...e.log };
-          dirtyKeys.push(e.id);
+        // La actividad rellena huecos: nunca pisa lo que escribiste, pero completa lo que falte
+        // (sobre todo la duración) y SIEMPRE marca la sesión como hecha. Antes, si ya habías
+        // registrado algo a mano (típico del gimnasio, que va por series), se saltaba el merge
+        // entero y la sesión se quedaba sin marcar aunque el reloj la hubiera registrado.
+        const cur: LogData = s.logs[e.id] || {};
+        const merged = { ...cur } as Record<string, unknown>;
+        for (const [key, val] of Object.entries(e.log)) {
+          if (key === "done" || val == null || val === "") continue;
+          if (merged[key] == null || merged[key] === "") merged[key] = val;
         }
+        if (e.log.done != null) merged.done = e.log.done;
+        s.logs[e.id] = merged as LogData;
+        dirtyKeys.push(e.id);
       }
       if (!changed) return;
       commit(s);
