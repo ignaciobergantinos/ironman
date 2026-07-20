@@ -104,18 +104,21 @@ input,textarea,select{font-family:inherit}
 .goal-fill{height:100%;border-radius:99px;transition:width .25s}
 .goal-note{font-size:11.5px;color:var(--faint);margin-top:2px}
 /* calendario del día: gutter de horas + carril por hora */
-.cal{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+/* overflow visible: el selector de categoría se despliega fuera de su fila */
+.cal{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
 .cal-row{display:flex;align-items:stretch;gap:10px;min-height:38px;border-bottom:1px solid var(--border)}
-.cal-row:last-child{border-bottom:none}
+.cal-row:first-child{border-radius:var(--radius) var(--radius) 0 0}
+.cal-row:last-child{border-bottom:none;border-radius:0 0 var(--radius) var(--radius)}
 .cal-row.full{background:var(--surface-2)}
 .cal-hour{flex:0 0 auto;width:40px;padding:10px 0 0 12px;font-size:11.5px;font-weight:700;color:var(--faint);letter-spacing:.02em}
 .cal-slot{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;padding:6px 10px 6px 0;justify-content:center}
 .cal-item{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:7px 9px}
-/* ancho holgado: en locales de 12 h el campo nativo añade AM/PM y se cortaba */
-.cal-time{flex:0 0 auto;width:78px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--muted);background:none;border:none;padding:0;text-align:left}
-.cal-time::-webkit-calendar-picker-indicator{display:none;-webkit-appearance:none}
-.cal-time::-webkit-datetime-edit{padding:0}
-.cal-time:focus{outline:none;color:var(--accent)}
+/* La hora ya la da el gutter de la izquierda: aquí solo un reloj que abre el selector nativo
+   (el input va encima, invisible, para no repetir "08" al lado del 08 de la fila). */
+.cal-when{position:relative;flex:0 0 auto;width:24px;height:24px;display:grid;place-items:center;color:var(--faint);border-radius:7px;cursor:pointer}
+.cal-when:hover{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.cal-when input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer}
+.cal-when:focus-within{color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .cal-main{flex:1;min-width:0;text-align:left;padding:0;display:flex;align-items:center;gap:9px;background:none;border:none}
 .cal-txt{min-width:0;flex:1}
 .cal-name{display:block;font-weight:700;font-size:13px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -128,6 +131,14 @@ input,textarea,select{font-family:inherit}
 .cal-row.full .cal-add{opacity:0}
 .cal-row.full:hover .cal-add{opacity:1}
 
+/* categoría de la nota: icono a la izquierda que abre el selector */
+.cal-item.picking{position:relative;z-index:5}
+.cal-cat{flex:0 0 auto;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;border:1px solid var(--border);background:var(--surface-2)}
+.cal-cat:hover{border-color:currentColor}
+.cat-picker{position:absolute;top:calc(100% + 6px);left:0;z-index:10;display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:7px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:12px;box-shadow:var(--shadow-lg);min-width:260px}
+.cat-picker button{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:8px;font-size:12.5px;font-weight:700;color:var(--muted);text-align:left}
+.cat-picker button:hover{background:var(--surface-3);color:var(--cc)}
+.cat-picker button.on{color:var(--cc);background:color-mix(in srgb,var(--cc) 14%,transparent)}
 .ag-note{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--text);background:none;border:none;padding:6px 0}
 .ag-note::placeholder{color:var(--faint);font-weight:500}
 .ag-note:focus{outline:none}

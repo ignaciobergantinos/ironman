@@ -361,7 +361,23 @@ export function weekTarget(d: Date): WeekTarget | null {
 /* ---------- agenda del día (planificación hora a hora) ----------
    `times` fija la hora de una sesión (planificada o extra) por su id; `notes` son entradas
    libres ("reunión con mi jefe"). Solo se guarda lo que rellenas: las horas vacías no existen. */
-export type AgendaNote = { id: string; at: string; text: string };
+// categoría de una nota: define el icono y el color con que se muestra en el calendario
+export type NoteCat = "trabajo" | "emprendimiento" | "estudio" | "idiomas" | "correr" | "nadar" | "bici" | "gimnasio" | "caminar" | "otro";
+export const NOTE_CATS: Record<NoteCat, { label: string; icon: string; color: string }> = {
+  trabajo: { label: "Trabajo", icon: "work", color: "var(--swim)" },
+  emprendimiento: { label: "Emprendimiento", icon: "venture", color: "var(--bike)" },
+  estudio: { label: "Estudio", icon: "study", color: "var(--gym)" },
+  idiomas: { label: "Idiomas", icon: "lang", color: "var(--walk)" },
+  correr: { label: "Correr", icon: "run", color: "var(--run)" },
+  nadar: { label: "Nadar", icon: "swim", color: "var(--swim)" },
+  bici: { label: "Bici", icon: "bike", color: "var(--bike)" },
+  gimnasio: { label: "Gimnasio", icon: "gym", color: "var(--gym)" },
+  caminar: { label: "Caminar", icon: "walk", color: "var(--walk)" },
+  otro: { label: "Otro", icon: "note", color: "var(--muted)" },
+};
+export const DEFAULT_CAT: NoteCat = "otro";
+
+export type AgendaNote = { id: string; at: string; text: string; cat?: NoteCat };
 export type AgendaDay = { times?: Record<string, string>; notes?: AgendaNote[] };
 // las entradas sin hora van al final al ordenar
 export const AT_LAST = "99:99";

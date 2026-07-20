@@ -8,8 +8,8 @@ import { Icon } from "@/lib/icons";
 import { composeStatsImage, shareImage, downloadImage, type OverlayStat } from "@/lib/share-image";
 import {
   DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, dayDefFor, weekMeta, DOW_LONG, MONTHS,
-  iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, RACE, weeksToRace, weekTarget,
-  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap, type AgendaNote,
+  iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, RACE, weeksToRace, weekTarget, NOTE_CATS, DEFAULT_CAT,
+  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap, type AgendaNote, type NoteCat,
 } from "@/lib/domain";
 
 /* ---------- pure helpers ---------- */
@@ -209,6 +209,7 @@ const hourOf = (at: string) => parseInt(at.slice(0, 2), 10);
 function TodayView({ store, api, onOpen, onAdd, onDel }: {
   store: Store; api: UseStore; onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
 }) {
+  const [catOpen, setCatOpen] = useState<string | null>(null);
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const k = iso(now);
   const templ = templSessions(now, mapFor(store, now)), extra = extraSessions(now, store);
@@ -241,8 +242,11 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
                 {inHour.map((r) =>
                   r.kind === "sess" ? (
                     <div className="cal-item" key={r.s.id}>
-                      <input type="time" className="cal-time" value={r.at}
-                        onChange={(e) => api.setSessionTime(k, r.s.id, e.target.value)} aria-label={`Hora de ${r.s.name}`} />
+                      <label className="cal-when" title="Cambiar hora">
+                        <Icon name="today" size={13} />
+                        <input type="time" value={r.at}
+                          onChange={(e) => api.setSessionTime(k, r.s.id, e.target.value)} aria-label={`Hora de ${r.s.name}`} />
+                      </label>
                       <button className={"cal-main" + (store.logs[r.s.id]?.done ? " done" : "")} onClick={() => onOpen(r.s.id)}>
                         <span className="sess-ic" style={{ ["--sc"]: DISC[r.s.disc].color } as React.CSSProperties}><Icon name={r.s.disc} size={16} /></span>
                         <span className="cal-txt">
@@ -254,12 +258,30 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
                       {r.s.kind === "extra" && <button className="ag-del" onClick={() => onDel(r.s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>}
                     </div>
                   ) : (
-                    <div className="cal-item" key={r.note.id}>
-                      <input type="time" className="cal-time" value={r.at}
-                        onChange={(e) => api.setNote(k, r.note.id, { at: e.target.value })} aria-label="Hora de la nota" />
+                    <div className={"cal-item" + (catOpen === r.note.id ? " picking" : "")} key={r.note.id}>
+                      <button className="cal-cat" style={{ color: NOTE_CATS[r.note.cat ?? DEFAULT_CAT].color }}
+                        onClick={() => setCatOpen((c) => (c === r.note.id ? null : r.note.id))}
+                        aria-label={`Categoría: ${NOTE_CATS[r.note.cat ?? DEFAULT_CAT].label}`}>
+                        <Icon name={NOTE_CATS[r.note.cat ?? DEFAULT_CAT].icon} size={15} />
+                      </button>
                       <input className="ag-note" value={r.note.text} placeholder="Reunión, almuerzo…" autoFocus={!r.note.text}
                         onChange={(e) => api.setNote(k, r.note.id, { text: e.target.value })} aria-label="Nota" />
+                      <label className="cal-when" title="Cambiar hora">
+                        <Icon name="today" size={13} />
+                        <input type="time" value={r.at}
+                          onChange={(e) => api.setNote(k, r.note.id, { at: e.target.value })} aria-label="Hora de la nota" />
+                      </label>
                       <button className="ag-del" onClick={() => api.delNote(k, r.note.id)} aria-label="Eliminar nota"><Icon name="x" size={12} /></button>
+                      {catOpen === r.note.id && (
+                        <div className="cat-picker">
+                          {(Object.keys(NOTE_CATS) as NoteCat[]).map((ck) => (
+                            <button key={ck} className={r.note.cat === ck ? "on" : ""} style={{ ["--cc"]: NOTE_CATS[ck].color } as React.CSSProperties}
+                              onClick={() => { api.setNote(k, r.note.id, { cat: ck }); setCatOpen(null); }}>
+                              <Icon name={NOTE_CATS[ck].icon} size={14} /> {NOTE_CATS[ck].label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ),
                 )}

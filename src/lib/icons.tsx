@@ -29,6 +29,12 @@ export const ICONS: Record<string, ReactNode> = {
   camera: (<><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" {...P} /><circle cx="12" cy="13" r="3.2" {...P} /></>),
   mdot: (<><path d="M4 18.5 8 7l4 5.5L16 7l4 11.5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="5" r="2.1" fill="currentColor" /></>),
   food: (<><path d="M6 3v7a2 2 0 002 2v9M8 3v6M5 3v6M18 3c-1.5 0-2.5 2-2.5 5s1 4 2.5 4v9" {...P} /></>),
+  // categorías de las notas del día
+  work: (<><rect x="3" y="7" width="18" height="13" rx="2" {...P} /><path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M3 12h18" {...P} /></>),
+  study: (<><path d="M4 5.5A1.5 1.5 0 015.5 4H11v16H5.5A1.5 1.5 0 014 18.5z" {...P} /><path d="M20 5.5A1.5 1.5 0 0018.5 4H13v16h5.5a1.5 1.5 0 001.5-1.5z" {...P} /></>),
+  venture: (<><path d="M12 3c3 2 4.5 5 4.5 8.5L12 16l-4.5-4.5C7.5 8 9 5 12 3z" {...P} /><circle cx="12" cy="10" r="1.8" {...P} /><path d="M9 17l-1.5 4L12 19l4.5 2L15 17" {...P} /></>),
+  lang: (<><circle cx="12" cy="12" r="9" {...P} /><path d="M3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9z" {...P} /></>),
+  note: (<><path d="M5 4h11l3 3v13a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z" {...P} /><path d="M8 10h8M8 14h5" {...P} /></>),
 };
 
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {
