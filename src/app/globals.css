@@ -110,6 +110,12 @@ input,textarea,select{font-family:inherit}
 .addbtn{width:100%;border:1.5px dashed var(--border-strong);border-radius:11px;padding:9px;color:var(--muted);font-size:12.5px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px}
 .addbtn:hover{color:var(--text);border-color:var(--muted)}
 .restnote{padding:14px 15px 16px;color:var(--muted);font-size:12.5px}
+.softday{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:11px;padding:10px 13px;margin:8px 0 6px;display:flex;flex-direction:column;gap:2px;transition:.15s}
+.softday-t{font-size:13px;font-weight:800;color:var(--muted)}
+.softday-s{font-size:11.5px;color:var(--faint)}
+.softday.on{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.softday.on .softday-t{color:var(--warn)}
+.softday.on .softday-s{color:color-mix(in srgb,var(--warn) 78%,var(--text))}
 .extra{position:relative}
 .extra .exdel{position:absolute;top:-6px;right:-4px;width:22px;height:22px;border-radius:50%;background:var(--surface-2);border:1px solid var(--border);color:var(--faint);display:none;place-items:center}
 .slot:hover .extra .exdel,.extra:hover .exdel{display:grid}

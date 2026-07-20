@@ -353,6 +353,7 @@ export function fmtPace(sec: number | null): string {
 }
 export type LogData = {
   done?: boolean;
+  soft?: boolean; // día suave/recuperación: los pesos de esta sesión no fijan la plantilla
   dist?: string | null;
   time?: string | null;
   hr?: string | null;
@@ -367,7 +368,7 @@ export type LogData = {
 export function hasData(l?: LogData): boolean {
   if (!l) return false;
   return Object.entries(l).some(([k, v]) => {
-    if (k === "done") return false;
+    if (k === "done" || k === "soft") return false;
     if (v == null || v === "") return false;
     if (typeof v === "object") return Object.keys(v).length > 0;
     return true;

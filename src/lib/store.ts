@@ -249,15 +249,17 @@ export function useStore(userId: string) {
       ex[exIdx] = arr;
       log.ex = ex;
       s.logs[id] = log;
-      // editar la 1ª serie fija la plantilla para el resto de series y futuras sesiones
-      if (setIdx === 0 && routine) {
+      // editar la 1ª serie fija la plantilla para el resto de series y futuras sesiones,
+      // salvo en un día suave/recuperación (log.soft): ahí no tocamos los pesos de plantilla
+      const setsDefault = setIdx === 0 && routine && !log.soft;
+      if (setsDefault) {
         const gd = { ...s.gymDefaults };
         gd[routine] = { ...(gd[routine] || {}), [exIdx]: { ...(gd[routine]?.[exIdx] || {}), [k]: val } };
         s.gymDefaults = gd;
       }
       commit(s);
       markDirty(id);
-      if (setIdx === 0 && routine) markDirty(GYM_DEF_KEY);
+      if (setsDefault) markDirty(GYM_DEF_KEY);
     },
     [commit, markDirty],
   );

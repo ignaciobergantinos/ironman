@@ -674,6 +674,10 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
                 </div>
               )}
               <div className="card-lab" style={{ padding: "0 2px" }}><span className="eyebrow">Rutina · {ROUTINES[s.routine].label}</span><span className="tag">{ROUTINES[s.routine].ex.length} ejercicios</span></div>
+              <button type="button" className={"softday" + (l.soft ? " on" : "")} onClick={() => api.setField(id, "soft", !l.soft)}>
+                <span className="softday-t">{l.soft ? "Día suave · recuperación" : "¿Día suave / recuperación?"}</span>
+                <span className="softday-s">{l.soft ? "Los pesos de hoy no cambian tu plantilla" : "Actívalo para que los pesos de hoy no cambien tu plantilla"}</span>
+              </button>
               <div>
                 {ROUTINES[s.routine].ex.map((e, ei) => {
                   const sets = l.ex?.[ei] ?? [];
