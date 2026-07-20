@@ -2,13 +2,14 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useStore, type Store, type ImportEntry } from "@/lib/store";
+import { useStore, type Store, type ImportEntry, type UseStore } from "@/lib/store";
 import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
+import { composeStatsImage, shareImage, type OverlayStat } from "@/lib/share-image";
 import {
   DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, dayDefFor, weekMeta, DOW_LONG, MONTHS,
-  iso, mondayOf, addDays, fmtDate, derive, hasData,
-  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap,
+  iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, RACE, weeksToRace, weekTarget,
+  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap, type AgendaNote,
 } from "@/lib/domain";
 
 /* ---------- pure helpers ---------- */
@@ -30,9 +31,10 @@ function findSession(id: string, store: Store): Session | null {
   if (t) return t;
   return extraSessions(d, store).find((s) => s.id === id) ?? null;
 }
-type Vol = { run: number; bike: number; swim: number; walk: number; gymDone: number; done: number; total: number };
+// `secs` = tiempo total registrado en la semana (todas las disciplinas, gimnasio incluido)
+type Vol = { run: number; bike: number; swim: number; walk: number; gymDone: number; done: number; total: number; secs: number };
 function weekVolume(mon: Date, store: Store): Vol {
-  const v: Vol = { run: 0, bike: 0, swim: 0, walk: 0, gymDone: 0, done: 0, total: 0 };
+  const v: Vol = { run: 0, bike: 0, swim: 0, walk: 0, gymDone: 0, done: 0, total: 0, secs: 0 };
   for (let i = 0; i < 7; i++) {
     const d = addDays(mon, i);
     [...templSessions(d, mapFor(store, d)), ...extraSessions(d, store)].forEach((s) => {
@@ -40,6 +42,7 @@ function weekVolume(mon: Date, store: Store): Vol {
       const l = store.logs[s.id];
       const dn = !!(l && l.done);
       if (dn) v.done++;
+      v.secs += parseTime(l?.time) ?? 0;
       if (s.disc === "gym") { if (dn) v.gymDone++; return; }
       const dist = l ? parseFloat(l.dist ?? "") : NaN;
       if (dist > 0) {
@@ -192,31 +195,61 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, on
   );
 }
 
-/* ---------- today view ---------- */
-function TodayView({ store, onOpen, onAdd, onDel }: {
-  store: Store; onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
+/* ---------- today view: agenda hora a hora ---------- */
+// Las sesiones de hoy ya están en la lista: solo les pones la hora. Las notas son texto libre.
+// Todo se ordena por hora; lo que aún no tiene hora queda al final.
+type AgendaRow = { at: string } & ({ kind: "sess"; s: Session } | { kind: "note"; note: AgendaNote });
+
+function TodayView({ store, api, onOpen, onAdd, onDel }: {
+  store: Store; api: UseStore; onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
 }) {
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const k = iso(now);
   const templ = templSessions(now, mapFor(store, now)), extra = extraSessions(now, store);
   const all = [...templ, ...extra];
+  const day = store.agenda[k] || {};
+  const times = day.times || {};
+  const notes = day.notes || [];
+  const rows: AgendaRow[] = [
+    ...all.map((s) => ({ kind: "sess" as const, at: times[s.id] || "", s })),
+    ...notes.map((note) => ({ kind: "note" as const, at: note.at || "", note })),
+  ].sort((a, b) => (a.at || AT_LAST).localeCompare(b.at || AT_LAST));
   return (
     <>
       <div className="weeknav"><div><h2 style={{ textTransform: "capitalize" }}>{DOW_LONG[now.getDay()]}</h2><div className="sub mono">{now.getDate()} {MONTHS[now.getMonth()]} {now.getFullYear()}</div></div></div>
-      {all.length === 0 && (
-        <div className="card"><div className="card-lab"><span className="eyebrow">Descanso</span></div><p style={{ margin: 0, color: "var(--muted)", fontSize: 13.5 }}>Hoy toca descansar o recuperación activa. Añade una caminata suave si te apetece moverte.</p></div>
+      {rows.length === 0 && (
+        <div className="card"><div className="card-lab"><span className="eyebrow">Descanso</span></div><p style={{ margin: 0, color: "var(--muted)", fontSize: 13.5 }}>Hoy toca descansar o recuperación activa. Añade una caminata suave o una nota si quieres planificar el día.</p></div>
       )}
-      <div className="days"><div className="day"><div className="slots" style={{ gridTemplateColumns: "1fr" }}>
-        {all.map((s) => (
-          <div className="slot" key={s.id}>
-            <div className="slot-lab">{s.kind === "extra" ? "Extra" : s.slot === "am" ? "Mañana · fuerte" : "Tarde · suave"}</div>
-            <div className="extra">
-              <SessionRow s={s} store={store} onOpen={onOpen} />
-              {s.kind === "extra" && <button className="exdel" onClick={() => onDel(s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>}
+      <div className="agenda">
+        {rows.map((r) =>
+          r.kind === "sess" ? (
+            <div className="ag-row" key={r.s.id}>
+              <input type="time" className={"ag-time" + (r.at ? "" : " unset")} value={r.at}
+                onChange={(e) => api.setSessionTime(k, r.s.id, e.target.value)} aria-label={`Hora de ${r.s.name}`} />
+              <button className={"ag-main" + (store.logs[r.s.id]?.done ? " done" : "")} onClick={() => onOpen(r.s.id)}>
+                <span className="sess-ic" style={{ ["--sc"]: DISC[r.s.disc].color } as React.CSSProperties}><Icon name={r.s.disc} size={17} /></span>
+                <span className="ag-txt">
+                  <span className="ag-name">{r.s.name}</span>
+                  <span className="ag-sub"><span className="idot" style={{ background: INT[r.s.intensity].c }} />{r.s.intensity}</span>
+                </span>
+                <span className="check"><Icon name="check" size={12} /></span>
+              </button>
+              {r.s.kind === "extra" && <button className="ag-del" onClick={() => onDel(r.s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>}
             </div>
-          </div>
-        ))}
-      </div></div></div>
+          ) : (
+            <div className="ag-row" key={r.note.id}>
+              <input type="time" className={"ag-time" + (r.at ? "" : " unset")} value={r.at}
+                onChange={(e) => api.setNote(k, r.note.id, { at: e.target.value })} aria-label="Hora de la nota" />
+              <input className="ag-note" value={r.note.text} placeholder="Reunión, recado, lo que sea…" autoFocus={!r.note.text}
+                onChange={(e) => api.setNote(k, r.note.id, { text: e.target.value })} aria-label="Nota" />
+              <button className="ag-del" onClick={() => api.delNote(k, r.note.id)} aria-label="Eliminar nota"><Icon name="x" size={12} /></button>
+            </div>
+          ),
+        )}
+      </div>
+      <div className="agenda-add">
+        <button className="addbtn" onClick={() => api.addNote(k)}><Icon name="plus" size={15} /> Añadir nota</button>
+      </div>
       <div className="fill-bottom"><AddExtra dateK={k} onAdd={onAdd} /></div>
     </>
   );
@@ -229,14 +262,23 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
   const sameMonth = mon.getMonth() === end.getMonth();
   const title = sameMonth ? `${mon.getDate()}–${end.getDate()} ${MONTHS[end.getMonth()]}` : `${fmtDate(mon)} – ${fmtDate(end)}`;
   const v = weekVolume(mon, store);
+  const hours = v.secs / 3600;
+  const target = weekTarget(mon);
+  const left = weeksToRace(mon);
   const tiles: { k: Discipline; lab: string; val: string | number; u: string; accent?: boolean }[] = [
     { k: "run", lab: "Carrera", val: v.run.toFixed(1), u: "km" },
     { k: "bike", lab: "Bici", val: v.bike.toFixed(1), u: "km" },
     { k: "swim", lab: "Natación", val: Math.round(v.swim), u: "m" },
     { k: "gym", lab: "Gimnasio", val: v.gymDone, u: "sesiones" },
     { k: "walk", lab: "Caminata", val: v.walk.toFixed(1), u: "km" },
-    { k: "run", lab: "Sesiones", val: v.done, u: "/ " + v.total, accent: true },
+    { k: "run", lab: "Tiempo", val: hours.toFixed(1), u: "h", accent: true },
   ];
+  const goals = target
+    ? [
+        { lab: "Carrera", now: v.run, goal: target.runKm, u: "km", dec: 1, c: DISC.run.color },
+        { lab: "Tiempo total", now: hours, goal: target.hours, u: "h", dec: 1, c: "var(--accent)" },
+      ]
+    : [];
   const weeks: { mon: Date; done: number }[] = [];
   let max = 1;
   for (let i = 7; i >= 0; i--) { const wmon = addDays(mon, -7 * i); const v2 = weekVolume(wmon, store); weeks.push({ mon: wmon, done: v2.done }); max = Math.max(max, v2.total); }
@@ -248,6 +290,27 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
         <button className="navbtn" onClick={() => setCursor(addDays(mon, 7))} aria-label="Semana siguiente"><Icon name="right" size={16} /></button>
         <button className="today-btn" onClick={() => setCursor(mondayOf(new Date()))}>Hoy</button>
       </div>
+      {target && (
+        <div className="goal">
+          <div className="goal-h">
+            <div>
+              <div className="goal-race"><Icon name="today" size={14} /> {RACE.name} · {RACE.date.getDate()} {MONTHS[RACE.date.getMonth()]} {RACE.date.getFullYear()}</div>
+              <div className="goal-left mono">{left === 0 ? "¡Es esta semana!" : left === 1 ? "Falta 1 semana" : `Faltan ${left} semanas`}</div>
+            </div>
+            <span className="goal-tag">{target.note}</span>
+          </div>
+          {goals.map((g) => {
+            const pct = Math.min(100, Math.round((g.now / g.goal) * 100));
+            return (
+              <div className="goal-row" key={g.lab}>
+                <div className="goal-lab">{g.lab}<b className="mono">{g.now.toFixed(g.dec)} / {g.goal} {g.u}</b></div>
+                <div className="goal-bar"><div className="goal-fill" style={{ width: `${pct}%`, background: g.c }} /></div>
+              </div>
+            );
+          })}
+          <div className="goal-note">Objetivo orientativo de la semana. Ajusta según cómo te sientas.</div>
+        </div>
+      )}
       <div className="tiles">
         {tiles.map((t, i) => {
           const c = t.accent ? "var(--accent)" : DISC[t.k].color;
@@ -671,6 +734,31 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
   const der = s.routine ? null : derive(s.disc, (statsEditing ? draft : { ...autoLog, ...l }) as LogData);
   const toggleEx = (i: number) => setOpenEx((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
+  // métricas que se estampan sobre la foto: las mismas que ya muestra la sesión
+  // (lo que hayas escrito, o lo sincronizado desde intervals.icu)
+  const [sharing, setSharing] = useState(false);
+  const [shareErr, setShareErr] = useState<string | null>(null);
+  function overlayStats(): OverlayStat[] {
+    const out: OverlayStat[] = [];
+    const dist = fieldVal("dist"), time = fieldVal("time"), hr = fieldVal("hr");
+    if (dist) out.push({ label: "Distancia", value: dist, unit: s.disc === "swim" ? "m" : "km" });
+    if (der && der.v !== "—") out.push({ label: der.l, value: der.v, unit: der.u });
+    if (time) out.push({ label: "Tiempo", value: time });
+    if (hr) out.push({ label: "FC media", value: hr, unit: "ppm" });
+    return out;
+  }
+  async function shareWithStats(url: string) {
+    setSharing(true);
+    setShareErr(null);
+    try {
+      const blob = await composeStatsImage(url, s.name, dayLabel, overlayStats());
+      await shareImage(blob, `tria-${s.date}.jpg`);
+    } catch {
+      setShareErr("No se pudo generar la imagen");
+    }
+    setSharing(false);
+  }
+
   return (
     <div className="overlay open" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="sheet" style={sheetStyle}>
@@ -820,6 +908,10 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
         <div className="lightbox" onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="Foto de la sesión" />
           <button className="lightbox-close" onClick={() => setLightbox(null)} aria-label="Cerrar"><Icon name="x" size={18} /></button>
+          <button className="lightbox-share" disabled={sharing}
+            onClick={(ev) => { ev.stopPropagation(); void shareWithStats(lightbox); }}>
+            {sharing ? "Generando…" : shareErr ?? "Compartir con datos"}
+          </button>
         </div>
       )}
     </div>
@@ -916,7 +1008,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
 
       <main className={"wrap" + (view === "today" || view === "activity" ? " fill" : "")}>
         {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} onSwap={(m, a, b) => { api.swapDays(m, a, b); flash("Días cambiados"); }} onResetWeek={(m) => { api.resetWeek(m); flash("Semana restablecida"); }} />}
-        {view === "today" && <TodayView store={store} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
+        {view === "today" && <TodayView store={store} api={api} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} onOpenAct={setOpenAct} />}
         {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} />}
         {view === "food" && <FoodView api={api} />}

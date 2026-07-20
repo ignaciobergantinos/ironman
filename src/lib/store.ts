@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Discipline, Intensity, LogData, Food, FoodDay, MealLog, AddItem, WeekMap } from "@/lib/domain";
+import type { Discipline, Intensity, LogData, Food, FoodDay, MealLog, AddItem, WeekMap, AgendaDay, AgendaNote } from "@/lib/domain";
 import { DISC, hasData, isIdentityMap } from "@/lib/domain";
 import { LOCAL_MOCK } from "@/lib/local-mock";
 
@@ -11,7 +11,8 @@ export type SetVal = { kg?: string | null; reps?: string | null };
 // imported: ids de actividades ya volcadas en el registro (para no reimportar ni resucitar borradas)
 // foodLog: desviaciones de la dieta por día; customFoods: alimentos añadidos por el usuario al catálogo
 // weekmap: reordenación de días por semana (clave = lunes ISO, valor = permutación de dow → dow origen)
-export type Store = { logs: Record<string, LogData>; extras: Record<string, ExtraDef[]>; gymDefaults: Record<string, Record<number, SetVal>>; imported: Record<string, true>; foodLog: Record<string, FoodDay>; customFoods: Food[]; weekmap: Record<string, WeekMap> };
+// agenda: planificación hora a hora por día (clave = fecha ISO)
+export type Store = { logs: Record<string, LogData>; extras: Record<string, ExtraDef[]>; gymDefaults: Record<string, Record<number, SetVal>>; imported: Record<string, true>; foodLog: Record<string, FoodDay>; customFoods: Food[]; weekmap: Record<string, WeekMap>; agenda: Record<string, AgendaDay> };
 export type SyncState = "loading" | "synced" | "saving" | "offline";
 
 // una actividad a volcar en el registro: sesión planificada (sin extra) o extra autogenerado
@@ -25,7 +26,8 @@ const IMPORTED_KEY = "activities:imported";
 const FOOD_CAT_KEY = "food:catalog";
 const foodDayKey = (date: string) => `food:${date}`;
 const weekMapKey = (mon: string) => `week:${mon}`;
-const empty = (): Store => ({ logs: {}, extras: {}, gymDefaults: {}, imported: {}, foodLog: {}, customFoods: [], weekmap: {} });
+const agendaKey = (date: string) => `day:${date}`;
+const empty = (): Store => ({ logs: {}, extras: {}, gymDefaults: {}, imported: {}, foodLog: {}, customFoods: [], weekmap: {}, agenda: {} });
 
 // normaliza extras guardados como string[] (formato viejo) al nuevo {id, amt?}
 function normFoodDay(day: unknown): FoodDay {
@@ -104,6 +106,8 @@ function rowsToStore(rows: Row[], keepLocal: Store, dirty: Set<string>): Store {
     } else if (row.kind === "weekmap") {
       const map = (row.data as { map?: WeekMap }).map;
       if (!isIdentityMap(map)) s.weekmap[row.entry_key.slice(5)] = map!;
+    } else if (row.kind === "agenda") {
+      s.agenda[row.entry_key.slice(4)] = (row.data as AgendaDay) || {};
     } else {
       s.logs[row.entry_key] = row.data as LogData;
     }
@@ -115,6 +119,7 @@ function rowsToStore(rows: Row[], keepLocal: Store, dirty: Set<string>): Store {
     if (key === FOOD_CAT_KEY) { s.customFoods = keepLocal.customFoods; continue; }
     if (key.startsWith("food:")) { const date = key.slice(5); if (keepLocal.foodLog[date]) s.foodLog[date] = keepLocal.foodLog[date]; continue; }
     if (key.startsWith("week:")) { const mon = key.slice(5); if (keepLocal.weekmap[mon]) s.weekmap[mon] = keepLocal.weekmap[mon]; continue; }
+    if (key.startsWith("day:")) { const date = key.slice(4); if (keepLocal.agenda[date]) s.agenda[date] = keepLocal.agenda[date]; continue; }
     if (keepLocal.logs[key]) s.logs[key] = keepLocal.logs[key];
     for (const date of Object.keys(keepLocal.extras)) {
       const ex = keepLocal.extras[date]?.find((e) => e.id === key);
@@ -161,6 +166,9 @@ export function useStore(userId: string) {
       }
       if (key.startsWith("week:")) {
         return { entry_key: key, kind: "weekmap", data: { map: storeRef.current.weekmap[key.slice(5)] || [] } };
+      }
+      if (key.startsWith("day:")) {
+        return { entry_key: key, kind: "agenda", data: storeRef.current.agenda[key.slice(4)] || {} };
       }
       const ex = isExtra(key);
       if (ex) {
@@ -313,6 +321,51 @@ export function useStore(userId: string) {
     [commit, markDirty],
   );
 
+  // agenda del día: hora de cada sesión + notas libres. Solo se guarda lo relleno.
+  const updateAgenda = useCallback(
+    (date: string, fn: (a: AgendaDay) => AgendaDay) => {
+      const s = { ...storeRef.current, agenda: { ...storeRef.current.agenda } };
+      const next = fn({ ...(s.agenda[date] || {}) });
+      const empty = Object.keys(next.times || {}).length === 0 && (next.notes || []).length === 0;
+      if (empty) delete s.agenda[date];
+      else s.agenda[date] = next;
+      commit(s);
+      markDirty(agendaKey(date));
+    },
+    [commit, markDirty],
+  );
+
+  // fija (o borra, con "") la hora de una sesión planificada o extra
+  const setSessionTime = useCallback(
+    (date: string, id: string, at: string) => {
+      updateAgenda(date, (a) => {
+        const times = { ...(a.times || {}) };
+        if (at) times[id] = at;
+        else delete times[id];
+        return { ...a, times };
+      });
+    },
+    [updateAgenda],
+  );
+
+  const addNote = useCallback(
+    (date: string) => {
+      const id = "n" + Date.now().toString(36);
+      updateAgenda(date, (a) => ({ ...a, notes: [...(a.notes || []), { id, at: "", text: "" }] }));
+      return id;
+    },
+    [updateAgenda],
+  );
+  const setNote = useCallback(
+    (date: string, id: string, patch: Partial<AgendaNote>) =>
+      updateAgenda(date, (a) => ({ ...a, notes: (a.notes || []).map((n) => (n.id === id ? { ...n, ...patch } : n)) })),
+    [updateAgenda],
+  );
+  const delNote = useCallback(
+    (date: string, id: string) => updateAgenda(date, (a) => ({ ...a, notes: (a.notes || []).filter((n) => n.id !== id) })),
+    [updateAgenda],
+  );
+
   // actualiza el registro de una comida de un día concreto y lo marca para sincronizar
   const updateMealLog = useCallback(
     (date: string, mealId: string, fn: (m: MealLog) => MealLog) => {
@@ -440,7 +493,7 @@ export function useStore(userId: string) {
 
   const importData = useCallback(
     async (obj: Store) => {
-      const s: Store = { logs: obj.logs || {}, extras: obj.extras || {}, gymDefaults: obj.gymDefaults || {}, imported: obj.imported || {}, foodLog: obj.foodLog || {}, customFoods: obj.customFoods || [], weekmap: obj.weekmap || {} };
+      const s: Store = { logs: obj.logs || {}, extras: obj.extras || {}, gymDefaults: obj.gymDefaults || {}, imported: obj.imported || {}, foodLog: obj.foodLog || {}, customFoods: obj.customFoods || [], weekmap: obj.weekmap || {}, agenda: obj.agenda || {} };
       commit(s);
       const rows: Array<Record<string, unknown>> = [];
       if (Object.keys(s.gymDefaults).length) rows.push({ user_id: userId, entry_key: GYM_DEF_KEY, kind: "gymdef", data: s.gymDefaults, updated_at: new Date().toISOString() });
@@ -455,6 +508,7 @@ export function useStore(userId: string) {
       if (s.customFoods.length) rows.push({ user_id: userId, entry_key: FOOD_CAT_KEY, kind: "foodcat", data: { foods: s.customFoods }, updated_at: new Date().toISOString() });
       for (const date of Object.keys(s.foodLog)) rows.push({ user_id: userId, entry_key: foodDayKey(date), kind: "foodday", data: s.foodLog[date], updated_at: new Date().toISOString() });
       for (const mon of Object.keys(s.weekmap)) rows.push({ user_id: userId, entry_key: weekMapKey(mon), kind: "weekmap", data: { map: s.weekmap[mon] }, updated_at: new Date().toISOString() });
+      for (const date of Object.keys(s.agenda)) rows.push({ user_id: userId, entry_key: agendaKey(date), kind: "agenda", data: s.agenda[date], updated_at: new Date().toISOString() });
       if (rows.length) await supabase.from("training_entries").upsert(rows, { onConflict: "user_id,entry_key" });
     },
     [commit, supabase, userId],
@@ -509,6 +563,6 @@ export function useStore(userId: string) {
     await supabase.from("training_entries").delete().eq("user_id", userId);
   }, [commit, supabase, userId]);
 
-  return { store, sync, getLog, setField, setSet, toggleDone, swapDays, resetWeek, toggleFoodPlanned, setFoodQty, addFoodExtra, removeFoodExtra, setExtraQty, addCustomFood, addExtra, delExtra, importActivities, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
+  return { store, sync, getLog, setField, setSet, toggleDone, swapDays, resetWeek, setSessionTime, addNote, setNote, delNote, toggleFoodPlanned, setFoodQty, addFoodExtra, removeFoodExtra, setExtraQty, addCustomFood, addExtra, delExtra, importActivities, importData, resetAll, addPhoto, removePhoto, getPhotoUrls };
 }
 export type UseStore = ReturnType<typeof useStore>;

@@ -323,6 +323,48 @@ export function dayMacros(day: FoodDay | undefined, byId: Record<string, Food>):
   return MEALS.reduce((s, m) => addMac(s, mealMacros(m, day?.[m.id], byId)), ZERO);
 }
 
+/* ---------- carrera objetivo y volumen semanal recomendado ---------- */
+export const RACE = { name: "Maratón", date: new Date(2026, 8, 20) }; // domingo 20 sep 2026
+
+// semanas completas que faltan para la carrera (0 = semana de la carrera, negativo = ya pasó)
+export function weeksToRace(d: Date): number {
+  return Math.round((mondayOf(RACE.date).getTime() - mondayOf(d).getTime()) / (7 * 86400000));
+}
+
+// Objetivo orientativo por semana, indexado por semanas que faltan. La forma es la clásica de
+// maratón: bloques de carga con una descarga cada 3–4 semanas, pico a 3 semanas y afinamiento
+// las dos últimas. `runKm` es solo carrera; `hours` es el total de entreno (nado + bici + gym).
+export type WeekTarget = { runKm: number; hours: number; note: string };
+const TARGETS: WeekTarget[] = [
+  { runKm: 50, hours: 6, note: "Semana de carrera" },      // 0 · incluye los 42,2 km del domingo
+  { runKm: 30, hours: 4, note: "Afinamiento" },            // 1
+  { runKm: 40, hours: 5.5, note: "Afinamiento" },          // 2
+  { runKm: 55, hours: 8, note: "Pico" },                   // 3
+  { runKm: 48, hours: 7, note: "Carga" },                  // 4
+  { runKm: 52, hours: 7.5, note: "Carga" },                // 5
+  { runKm: 36, hours: 5.5, note: "Descarga" },             // 6
+  { runKm: 48, hours: 7, note: "Carga" },                  // 7
+  { runKm: 44, hours: 6.5, note: "Carga" },                // 8
+  { runKm: 40, hours: 6, note: "Construcción" },           // 9
+  { runKm: 32, hours: 5, note: "Descarga" },               // 10
+  { runKm: 38, hours: 6, note: "Construcción" },           // 11
+];
+const TARGET_BASE: WeekTarget = { runKm: 34, hours: 5.5, note: "Base" };
+
+export function weekTarget(d: Date): WeekTarget | null {
+  const w = weeksToRace(d);
+  if (w < 0) return null; // la carrera ya pasó: sin objetivo
+  return TARGETS[w] ?? TARGET_BASE;
+}
+
+/* ---------- agenda del día (planificación hora a hora) ----------
+   `times` fija la hora de una sesión (planificada o extra) por su id; `notes` son entradas
+   libres ("reunión con mi jefe"). Solo se guarda lo que rellenas: las horas vacías no existen. */
+export type AgendaNote = { id: string; at: string; text: string };
+export type AgendaDay = { times?: Record<string, string>; notes?: AgendaNote[] };
+// las entradas sin hora van al final al ordenar
+export const AT_LAST = "99:99";
+
 export const DOW_LONG = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 export const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
