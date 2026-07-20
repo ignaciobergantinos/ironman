@@ -308,6 +308,7 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
   const hours = v.secs / 3600;
   const target = weekTarget(mon);
   const left = weeksToRace(mon);
+  const pctDone = v.total ? Math.round((v.done / v.total) * 100) : 0;
   const tiles: { k: Discipline; lab: string; val: string | number; u: string; accent?: boolean }[] = [
     { k: "run", lab: "Carrera", val: v.run.toFixed(1), u: "km" },
     { k: "bike", lab: "Bici", val: v.bike.toFixed(1), u: "km" },
@@ -332,6 +333,10 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
         <div><h2>Progreso</h2><div className="sub mono">Volumen · {title}</div></div>
         <button className="navbtn" onClick={() => setCursor(addDays(mon, 7))} aria-label="Semana siguiente"><Icon name="right" size={16} /></button>
         <button className="today-btn" onClick={() => setCursor(mondayOf(new Date()))}>Hoy</button>
+      </div>
+      <div className="adh">
+        <div className="ring" style={{ background: `conic-gradient(var(--accent) ${pctDone}%, var(--surface-3) 0)` }}><b>{pctDone}%</b></div>
+        <div className="adh-txt"><div className="big mono">{v.done} / {v.total} sesiones</div><div className="small">completadas esta semana</div></div>
       </div>
       {target && (
         <div className="goal">
