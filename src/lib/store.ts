@@ -349,9 +349,9 @@ export function useStore(userId: string) {
   );
 
   const addNote = useCallback(
-    (date: string) => {
+    (date: string, at = "") => {
       const id = "n" + Date.now().toString(36);
-      updateAgenda(date, (a) => ({ ...a, notes: [...(a.notes || []), { id, at: "", text: "" }] }));
+      updateAgenda(date, (a) => ({ ...a, notes: [...(a.notes || []), { id, at, text: "" }] }));
       return id;
     },
     [updateAgenda],

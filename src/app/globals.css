@@ -103,28 +103,36 @@ input,textarea,select{font-family:inherit}
 .goal-bar{height:7px;border-radius:99px;background:var(--surface-3);overflow:hidden}
 .goal-fill{height:100%;border-radius:99px;transition:width .25s}
 .goal-note{font-size:11.5px;color:var(--faint);margin-top:2px}
-.agenda{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
-.agenda:empty{display:none}
-.ag-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border)}
-.ag-row:last-child{border-bottom:none}
-.ag-time{flex:0 0 auto;width:88px;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:6px 4px;text-align:center}
-.ag-time.unset{color:var(--faint);border-style:dashed}
-.ag-time:focus{outline:none;border-color:var(--accent);border-style:solid}
-/* el reloj nativo roba ancho y no aporta: el propio campo ya abre el selector al tocarlo */
-.ag-time::-webkit-calendar-picker-indicator{display:none;-webkit-appearance:none}
-.ag-time::-webkit-datetime-edit{padding:0}
-.ag-main{flex:1;min-width:0;text-align:left;padding:0;display:flex;align-items:center;gap:10px;background:none;border:none}
-.ag-txt{min-width:0;flex:1}
-.ag-name{display:block;font-weight:700;font-size:13.5px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ag-sub{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:2px}
-.ag-main.done .check{background:var(--good);border-color:var(--good);color:#fff}
-.ag-main.done .ag-name{color:var(--muted)}
+/* calendario del día: gutter de horas + carril por hora */
+.cal{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.cal-row{display:flex;align-items:stretch;gap:10px;min-height:38px;border-bottom:1px solid var(--border)}
+.cal-row:last-child{border-bottom:none}
+.cal-row.full{background:var(--surface-2)}
+.cal-hour{flex:0 0 auto;width:40px;padding:10px 0 0 12px;font-size:11.5px;font-weight:700;color:var(--faint);letter-spacing:.02em}
+.cal-slot{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;padding:6px 10px 6px 0;justify-content:center}
+.cal-item{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:7px 9px}
+/* ancho holgado: en locales de 12 h el campo nativo añade AM/PM y se cortaba */
+.cal-time{flex:0 0 auto;width:78px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--muted);background:none;border:none;padding:0;text-align:left}
+.cal-time::-webkit-calendar-picker-indicator{display:none;-webkit-appearance:none}
+.cal-time::-webkit-datetime-edit{padding:0}
+.cal-time:focus{outline:none;color:var(--accent)}
+.cal-main{flex:1;min-width:0;text-align:left;padding:0;display:flex;align-items:center;gap:9px;background:none;border:none}
+.cal-txt{min-width:0;flex:1}
+.cal-name{display:block;font-weight:700;font-size:13px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-sub{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;margin-top:1px}
+.cal-main.done .check{background:var(--good);border-color:var(--good);color:#fff}
+.cal-main.done .cal-name{color:var(--muted)}
+/* el "+" solo se insinúa: aparece al pasar por encima o al enfocar (en móvil queda tenue) */
+.cal-add{align-self:flex-start;width:26px;height:22px;border-radius:7px;color:var(--faint);display:grid;place-items:center;opacity:.28;transition:.15s}
+.cal-row:hover .cal-add,.cal-add:focus-visible{opacity:1;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.cal-row.full .cal-add{opacity:0}
+.cal-row.full:hover .cal-add{opacity:1}
+
 .ag-note{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--text);background:none;border:none;padding:6px 0}
 .ag-note::placeholder{color:var(--faint);font-weight:500}
 .ag-note:focus{outline:none}
 .ag-del{flex:0 0 auto;width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--surface-2);color:var(--faint);display:grid;place-items:center}
 .ag-del:hover{color:var(--hard);border-color:var(--hard)}
-.agenda-add{padding:10px 0 2px}
 .weekedit{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 2px 12px}
 .weekedit-btn{font-size:12.5px;font-weight:700;padding:7px 13px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);display:inline-flex;align-items:center;gap:6px}
 .weekedit-btn.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}

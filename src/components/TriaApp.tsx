@@ -195,10 +195,16 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, on
   );
 }
 
-/* ---------- today view: agenda hora a hora ---------- */
-// Las sesiones de hoy ya están en la lista: solo les pones la hora. Las notas son texto libre.
-// Todo se ordena por hora; lo que aún no tiene hora queda al final.
+/* ---------- today view: calendario del día ---------- */
+// Rejilla de horas (desde las 7 por defecto). Las sesiones vienen precolocadas —la de la mañana
+// a las 8, la de la tarde a las 18— sin necesidad de guardar nada; si cambias la hora, se guarda.
+// En cualquier hora libre puedes añadir una nota (reunión, almuerzo…).
 type AgendaRow = { at: string } & ({ kind: "sess"; s: Session } | { kind: "note"; note: AgendaNote });
+
+const CAL_FROM = 7, CAL_TO = 22;
+const DEFAULT_AT: Record<string, string> = { am: "08:00", pm: "18:00" };
+const sessionAt = (s: Session, times: Record<string, string>) => times[s.id] ?? (s.slot ? DEFAULT_AT[s.slot] : "12:00");
+const hourOf = (at: string) => parseInt(at.slice(0, 2), 10);
 
 function TodayView({ store, api, onOpen, onAdd, onDel }: {
   store: Store; api: UseStore; onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
@@ -211,44 +217,59 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
   const times = day.times || {};
   const notes = day.notes || [];
   const rows: AgendaRow[] = [
-    ...all.map((s) => ({ kind: "sess" as const, at: times[s.id] || "", s })),
-    ...notes.map((note) => ({ kind: "note" as const, at: note.at || "", note })),
-  ].sort((a, b) => (a.at || AT_LAST).localeCompare(b.at || AT_LAST));
+    ...all.map((s) => ({ kind: "sess" as const, at: sessionAt(s, times), s })),
+    ...notes.map((note) => ({ kind: "note" as const, at: note.at || AT_LAST, note })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  // el calendario se estira si algo cae fuera del rango por defecto
+  const lo = Math.min(CAL_FROM, ...rows.filter((r) => r.at !== AT_LAST).map((r) => hourOf(r.at)));
+  const hi = Math.max(CAL_TO, ...rows.filter((r) => r.at !== AT_LAST).map((r) => hourOf(r.at)));
+  const hours = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
   return (
     <>
       <div className="weeknav"><div><h2 style={{ textTransform: "capitalize" }}>{DOW_LONG[now.getDay()]}</h2><div className="sub mono">{now.getDate()} {MONTHS[now.getMonth()]} {now.getFullYear()}</div></div></div>
       {rows.length === 0 && (
         <div className="card"><div className="card-lab"><span className="eyebrow">Descanso</span></div><p style={{ margin: 0, color: "var(--muted)", fontSize: 13.5 }}>Hoy toca descansar o recuperación activa. Añade una caminata suave o una nota si quieres planificar el día.</p></div>
       )}
-      <div className="agenda">
-        {rows.map((r) =>
-          r.kind === "sess" ? (
-            <div className="ag-row" key={r.s.id}>
-              <input type="time" className={"ag-time" + (r.at ? "" : " unset")} value={r.at}
-                onChange={(e) => api.setSessionTime(k, r.s.id, e.target.value)} aria-label={`Hora de ${r.s.name}`} />
-              <button className={"ag-main" + (store.logs[r.s.id]?.done ? " done" : "")} onClick={() => onOpen(r.s.id)}>
-                <span className="sess-ic" style={{ ["--sc"]: DISC[r.s.disc].color } as React.CSSProperties}><Icon name={r.s.disc} size={17} /></span>
-                <span className="ag-txt">
-                  <span className="ag-name">{r.s.name}</span>
-                  <span className="ag-sub"><span className="idot" style={{ background: INT[r.s.intensity].c }} />{r.s.intensity}</span>
-                </span>
-                <span className="check"><Icon name="check" size={12} /></span>
-              </button>
-              {r.s.kind === "extra" && <button className="ag-del" onClick={() => onDel(r.s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>}
+      <div className="cal">
+        {hours.map((h) => {
+          const hh = String(h).padStart(2, "0");
+          const inHour = rows.filter((r) => r.at !== AT_LAST && hourOf(r.at) === h);
+          return (
+            <div className={"cal-row" + (inHour.length ? " full" : "")} key={h}>
+              <div className="cal-hour mono">{hh}</div>
+              <div className="cal-slot">
+                {inHour.map((r) =>
+                  r.kind === "sess" ? (
+                    <div className="cal-item" key={r.s.id}>
+                      <input type="time" className="cal-time" value={r.at}
+                        onChange={(e) => api.setSessionTime(k, r.s.id, e.target.value)} aria-label={`Hora de ${r.s.name}`} />
+                      <button className={"cal-main" + (store.logs[r.s.id]?.done ? " done" : "")} onClick={() => onOpen(r.s.id)}>
+                        <span className="sess-ic" style={{ ["--sc"]: DISC[r.s.disc].color } as React.CSSProperties}><Icon name={r.s.disc} size={16} /></span>
+                        <span className="cal-txt">
+                          <span className="cal-name">{r.s.name}</span>
+                          <span className="cal-sub"><span className="idot" style={{ background: INT[r.s.intensity].c }} />{r.s.intensity}</span>
+                        </span>
+                        <span className="check"><Icon name="check" size={11} /></span>
+                      </button>
+                      {r.s.kind === "extra" && <button className="ag-del" onClick={() => onDel(r.s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>}
+                    </div>
+                  ) : (
+                    <div className="cal-item" key={r.note.id}>
+                      <input type="time" className="cal-time" value={r.at}
+                        onChange={(e) => api.setNote(k, r.note.id, { at: e.target.value })} aria-label="Hora de la nota" />
+                      <input className="ag-note" value={r.note.text} placeholder="Reunión, almuerzo…" autoFocus={!r.note.text}
+                        onChange={(e) => api.setNote(k, r.note.id, { text: e.target.value })} aria-label="Nota" />
+                      <button className="ag-del" onClick={() => api.delNote(k, r.note.id)} aria-label="Eliminar nota"><Icon name="x" size={12} /></button>
+                    </div>
+                  ),
+                )}
+                <button className="cal-add" onClick={() => api.addNote(k, `${hh}:00`)} aria-label={`Añadir a las ${hh}:00`}>
+                  <Icon name="plus" size={13} />
+                </button>
+              </div>
             </div>
-          ) : (
-            <div className="ag-row" key={r.note.id}>
-              <input type="time" className={"ag-time" + (r.at ? "" : " unset")} value={r.at}
-                onChange={(e) => api.setNote(k, r.note.id, { at: e.target.value })} aria-label="Hora de la nota" />
-              <input className="ag-note" value={r.note.text} placeholder="Reunión, recado, lo que sea…" autoFocus={!r.note.text}
-                onChange={(e) => api.setNote(k, r.note.id, { text: e.target.value })} aria-label="Nota" />
-              <button className="ag-del" onClick={() => api.delNote(k, r.note.id)} aria-label="Eliminar nota"><Icon name="x" size={12} /></button>
-            </div>
-          ),
-        )}
-      </div>
-      <div className="agenda-add">
-        <button className="addbtn" onClick={() => api.addNote(k)}><Icon name="plus" size={15} /> Añadir nota</button>
+          );
+        })}
       </div>
       <div className="fill-bottom"><AddExtra dateK={k} onAdd={onAdd} /></div>
     </>
