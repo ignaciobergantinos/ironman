@@ -946,7 +946,7 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
                 </div>
               ))}
               <label className={"photo-add" + (uploading ? " busy" : "")}>
-                <input type="file" accept="image/*" capture="environment" className="hidden" disabled={uploading}
+                <input type="file" accept="image/*" className="hidden" disabled={uploading}
                   onChange={async (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (!f) return; setUploading(true); await api.addPhoto(id, f); setUploading(false); }} />
                 <Icon name="camera" size={22} /><span>{uploading ? "Subiendo…" : "Añadir foto"}</span>
               </label>
