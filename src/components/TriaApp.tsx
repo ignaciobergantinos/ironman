@@ -261,8 +261,8 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
                 {inHour.map((r) =>
                   r.kind === "sess" ? (
                     <div className="cal-item" key={r.s.id}>
-                      <label className="cal-when" title="Cambiar hora">
-                        <Icon name="today" size={13} />
+                      <label className="cal-when mono" title="Cambiar hora">
+                        {r.at}
                         <input type="time" value={r.at}
                           onChange={(e) => api.setSessionTime(k, r.s.id, e.target.value)} aria-label={`Hora de ${r.s.name}`} />
                       </label>
@@ -285,8 +285,8 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
                       </button>
                       <input className="ag-note" value={r.note.text} placeholder="Reunión, almuerzo…" autoFocus={!r.note.text}
                         onChange={(e) => api.setNote(k, r.note.id, { text: e.target.value })} aria-label="Nota" />
-                      <label className="cal-when" title="Cambiar hora">
-                        <Icon name="today" size={13} />
+                      <label className="cal-when mono" title="Cambiar hora">
+                        {r.at}
                         <input type="time" value={r.at}
                           onChange={(e) => api.setNote(k, r.note.id, { at: e.target.value })} aria-label="Hora de la nota" />
                       </label>
@@ -304,9 +304,11 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
                     </div>
                   ),
                 )}
-                <button className="cal-add" onClick={() => api.addNote(k, `${hh}:00`)} aria-label={`Añadir a las ${hh}:00`}>
-                  <Icon name="plus" size={13} />
-                </button>
+                {inHour.length === 0 && (
+                  <button className="cal-add" onClick={() => api.addNote(k, `${hh}:00`)} aria-label={`Añadir a las ${hh}:00`}>
+                    <Icon name="plus" size={13} />
+                  </button>
+                )}
               </div>
             </div>
           );
