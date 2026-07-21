@@ -258,6 +258,22 @@ input,textarea,select{font-family:inherit}
 .plan-steps li{display:flex;gap:11px;font-size:13.5px;align-items:flex-start}
 .plan-steps li .n{flex:0 0 auto;width:18px;height:18px;border-radius:50%;background:var(--surface-2);color:var(--muted);font-size:10.5px;font-weight:800;display:grid;place-items:center;margin-top:1px;font-family:var(--mono)}
 
+.advice{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.adv{display:flex;gap:9px;font-size:13px;line-height:1.4;align-items:flex-start;color:var(--text)}
+.adv .adv-dot{flex:0 0 auto;width:7px;height:7px;border-radius:50%;margin-top:5px;background:var(--muted)}
+.adv.warn .adv-dot{background:var(--warn)}
+.adv.good .adv-dot{background:var(--good)}
+.adv.tip .adv-dot{background:var(--accent)}
+
+.tipcard{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:13px;box-shadow:var(--shadow);transition:.15s}
+.tipcard:hover{border-color:var(--border-strong)}
+.tipcard:active{transform:scale(.99)}
+.tip-ic{flex:0 0 auto;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:var(--sc);background:color-mix(in srgb,var(--sc) 16%,transparent)}
+.tip-body{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.tip-cat{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.tip-txt{font-size:13px;line-height:1.4;color:var(--text)}
+.tip-next{flex:0 0 auto;color:var(--faint)}
+
 .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
 .photo{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:var(--surface-2)}
 .photo img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}

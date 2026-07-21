@@ -6,6 +6,7 @@ import { useStore, type Store, type ImportEntry, type UseStore } from "@/lib/sto
 import { useIntervals, useIntervalsFeed, actToLog, icuStats, fmtDur, fmtSpeed, type IcuActivity } from "@/lib/intervals";
 import { Icon } from "@/lib/icons";
 import { composeStatsImage, shareImage, downloadImage, type OverlayStat } from "@/lib/share-image";
+import { coachAdvice, TIPS, TIP_CAT } from "@/lib/coach";
 import {
   DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, dayDefFor, weekMeta, DOW_LONG, MONTHS,
   iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, RACE, weeksToRace, weekTarget, NOTE_CATS, DEFAULT_CAT,
@@ -206,6 +207,23 @@ const DEFAULT_AT: Record<string, string> = { am: "08:00", pm: "18:00" };
 const sessionAt = (s: Session, times: Record<string, string>) => times[s.id] ?? (s.slot ? DEFAULT_AT[s.slot] : "12:00");
 const hourOf = (at: string) => parseInt(at.slice(0, 2), 10);
 
+// Un consejo a la vez; al tocarlo pasa al siguiente (temas intercalados).
+function TipCard() {
+  const [i, setI] = useState(() => new Date().getDate() % TIPS.length);
+  const tip = TIPS[i];
+  const c = TIP_CAT[tip.cat];
+  return (
+    <button className="tipcard" onClick={() => setI((n) => (n + 1) % TIPS.length)} aria-label="Ver otro consejo">
+      <span className="tip-ic" style={{ ["--sc"]: c.color } as React.CSSProperties}><Icon name={c.icon} size={15} /></span>
+      <span className="tip-body">
+        <span className="tip-cat" style={{ color: c.color }}>{c.label}</span>
+        <span className="tip-txt">{tip.text}</span>
+      </span>
+      <span className="tip-next"><Icon name="right" size={14} /></span>
+    </button>
+  );
+}
+
 function TodayView({ store, api, onOpen, onAdd, onDel }: {
   store: Store; api: UseStore; onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
 }) {
@@ -228,6 +246,7 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
   return (
     <>
       <div className="weeknav"><div><h2 style={{ textTransform: "capitalize" }}>{DOW_LONG[now.getDay()]}</h2><div className="sub mono">{now.getDate()} {MONTHS[now.getMonth()]} {now.getFullYear()}</div></div></div>
+      <TipCard />
       {rows.length === 0 && (
         <div className="card"><div className="card-lab"><span className="eyebrow">Descanso</span></div><p style={{ margin: 0, color: "var(--muted)", fontSize: 13.5 }}>Hoy toca descansar o recuperación activa. Añade una caminata suave o una nota si quieres planificar el día.</p></div>
       )}
@@ -780,6 +799,7 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
   const saveEdit = () => { fields.forEach((f) => { const v = (draft[f.k] ?? "").trim(); api.setField(id, f.k as keyof LogData, v === "" ? null : draft[f.k]); }); setStatsEditing(false); };
   const cancelEdit = () => setStatsEditing(false);
   const der = s.routine ? null : derive(s.disc, (statsEditing ? draft : { ...autoLog, ...l }) as LogData);
+  const advice = s.routine ? [] : coachAdvice(s.disc, s.intensity, (statsEditing ? draft : { ...autoLog, ...l }) as LogData, act ?? null);
   const toggleEx = (i: number) => setOpenEx((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
   // métricas que se estampan sobre la foto: las mismas que ya muestra la sesión
@@ -920,6 +940,16 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
                   )}
                 </div>
               </div>
+              {advice.length > 0 && (
+                <div className="card">
+                  <div className="card-lab"><span className="eyebrow">Consejo</span></div>
+                  <ul className="advice">
+                    {advice.map((a, i) => (
+                      <li key={i} className={"adv " + a.tone}><span className="adv-dot" />{a.text}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
 
