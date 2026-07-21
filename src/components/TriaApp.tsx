@@ -800,7 +800,7 @@ function SessionSheet({ id, s, store, api, act, onClose }: {
     setSharing(true);
     setShareErr(null);
     try {
-      const blob = await composeStatsImage(url, s.name, dayLabel, overlayStats());
+      const blob = await composeStatsImage(url, overlayStats());
       const name = `tria-${s.date}.jpg`;
       if (save) downloadImage(blob, name);
       else await shareImage(blob, name);

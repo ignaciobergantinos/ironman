@@ -15,8 +15,6 @@ async function loadBitmap(src: string): Promise<ImageBitmap> {
 
 export async function composeStatsImage(
   src: string,
-  title: string,
-  sub: string,
   stats: OverlayStat[],
 ): Promise<Blob> {
   const bmp = await loadBitmap(src);
@@ -34,7 +32,6 @@ export async function composeStatsImage(
   // k normaliza los tamaños a un ancho de referencia de 1080 px
   const k = w / 1080;
   const pad = 62 * k;
-  const titleF = 44 * k, subF = 29 * k;
 
   // Los tiempos largos ("1:47:52") no caben en columnas de ancho fijo: se mide
   // la fila real y se encoge la tipografía hasta que entre, así nunca se solapan.
@@ -67,11 +64,9 @@ export async function composeStatsImage(
 
   const labelY = h - pad;
   const valueY = labelY - labelF - 20 * k;
-  const subY = valueY - valueF * 0.72 - 30 * k;
-  const titleY = subY - subF * 0.75 - 14 * k;
 
   // degradado inferior: sin él el texto blanco desaparece sobre fotos claras
-  const top = Math.max(0, titleY - titleF * 0.85 - 46 * k);
+  const top = Math.max(0, valueY - valueF * 0.85 - 46 * k);
   const grad = ctx.createLinearGradient(0, top, 0, h);
   grad.addColorStop(0, "rgba(0,0,0,0)");
   grad.addColorStop(0.45, "rgba(0,0,0,.45)");
@@ -81,14 +76,6 @@ export async function composeStatsImage(
 
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-
-  ctx.fillStyle = "rgba(255,255,255,.72)";
-  ctx.font = `600 ${subF}px ${SANS}`;
-  ctx.fillText(sub.toUpperCase(), pad, subY);
-
-  ctx.fillStyle = "#fff";
-  ctx.font = `800 ${titleF}px ${SANS}`;
-  ctx.fillText(title, pad, titleY);
 
   let x = pad;
   stats.forEach((st, i) => {
