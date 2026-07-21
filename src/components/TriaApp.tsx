@@ -8,9 +8,9 @@ import { Icon } from "@/lib/icons";
 import { composeStatsImage, shareImage, downloadImage, type OverlayStat } from "@/lib/share-image";
 import { coachAdvice, TIPS, TIP_CAT } from "@/lib/coach";
 import {
-  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, dayDefFor, weekMeta, DOW_LONG, MONTHS,
+  DISC, INT, ROUTINES, FIELDS, MEALS, foodsById, serving, itemAmount, mealPlanMacros, planMacros, dayDefFor, weekMeta, DOW_LONG, MONTHS,
   iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, RACE, weeksToRace, weekTarget, NOTE_CATS, DEFAULT_CAT,
-  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap, type AgendaNote, type NoteCat,
+  type Discipline, type Session, type LogData, type Food, type Meal, type Macros, type WeekMap, type AgendaNote, type NoteCat,
 } from "@/lib/domain";
 
 /* ---------- pure helpers ---------- */
@@ -412,63 +412,9 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
   );
 }
 
-/* ---------- food view (alimentación diaria) ----------
-   Por defecto se asume que comiste lo planificado; solo registras las
-   desviaciones: desmarca lo que no comiste, añade lo que comiste de más. */
-function FoodPicker({ foods, onAdd, onCreate }: { foods: Food[]; onAdd: (id: string, amt?: number) => void; onCreate: (name: string, kcal: number) => void }) {
-  const [open, setOpen] = useState(false);
-  const [sel, setSel] = useState("");
-  const [amt, setAmt] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
-  const [kcal, setKcal] = useState("");
-  const selFood = foods.find((f) => f.id === sel) ?? foods[0];
-  const gram = selFood?.grams != null;
-  const hasAmt = gram || !!selFood?.unit;
-  const defAmt = gram ? selFood!.grams! : 1;
-  const add = () => {
-    if (!selFood) return;
-    const a = amt ? parseInt(amt, 10) : defAmt;
-    onAdd(selFood.id, hasAmt ? a : undefined);
-    setAmt(""); setSel(""); setOpen(false);
-  };
-  const create = () => {
-    const k = parseInt(kcal, 10);
-    if (!name.trim() || !(k > 0)) return;
-    onCreate(name.trim(), k);
-    setName(""); setKcal(""); setCreating(false);
-  };
-  return (
-    <div className="food-add">
-      {open && (
-        <div className="food-pick">
-          {!creating ? (
-            <div className="food-sel">
-              <select value={selFood?.id ?? ""} onChange={(e) => { setSel(e.target.value); setAmt(""); }}>
-                {foods.map((f) => <option key={f.id} value={f.id}>{f.name} · {Math.round(serving(f, f.grams ?? 1).kcal)} kcal</option>)}
-              </select>
-              {hasAmt && (
-                <div className="food-amt">
-                  <input inputMode="numeric" placeholder={String(defAmt)} value={amt} onChange={(e) => setAmt(e.target.value)} />
-                  {gram && <span className="unit">g</span>}
-                </div>
-              )}
-              <button className="food-add-btn" onClick={add}>Añadir</button>
-            </div>
-          ) : (
-            <div className="food-new">
-              <input placeholder="Alimento nuevo" value={name} onChange={(e) => setName(e.target.value)} />
-              <input inputMode="numeric" placeholder="kcal" value={kcal} onChange={(e) => setKcal(e.target.value)} />
-              <button className="food-new-add" onClick={create} aria-label="Crear alimento"><Icon name="plus" size={15} /></button>
-            </div>
-          )}
-          <button className="food-link" onClick={() => setCreating((c) => !c)}>{creating ? "← elegir del catálogo" : "+ crear alimento nuevo"}</button>
-        </div>
-      )}
-      <button className="addbtn" onClick={() => setOpen((o) => !o)}><Icon name="plus" size={15} /> Comí algo más</button>
-    </div>
-  );
-}
+/* ---------- food view (plan de comidas) ----------
+   Referencia estática: bloques de comida predefinidos con sus macros y un
+   total al final. Sin checklist ni registro diario. */
 // bloque de 4 columnas al final de cada fila / cabecera: kcal | prot | carb | gras
 function MacroCols({ m, head }: { m: Macros; head?: boolean }) {
   const r = (n: number) => Math.round(n);
@@ -481,104 +427,48 @@ function MacroCols({ m, head }: { m: Macros; head?: boolean }) {
     </div>
   );
 }
-function FoodRow({ name, macros, eaten, extra, onClick, amount, unitLabel, onDec, onInc }: {
-  name: string; macros: Macros; eaten: boolean; extra?: boolean; onClick: () => void;
-  amount?: number; unitLabel?: string; onDec?: () => void; onInc?: () => void;
-}) {
-  return (
-    <div className={"food-row" + (eaten ? " done" : "")}>
-      <div className="food-txt">
-        <button className="food-name" onClick={onClick}>
-          <span className="check"><Icon name={extra ? "x" : "check"} size={12} /></span>
-          <span className="food-name-t">{name}{extra && <b className="food-extra-tag">extra</b>}</span>
-        </button>
-        {amount != null && (
-          <div className="qty">
-            <button onClick={onDec} aria-label="Menos">−</button>
-            <b className="mono">{amount}{unitLabel}</b>
-            <button onClick={onInc} aria-label="Más">+</button>
-          </div>
-        )}
-      </div>
-      <MacroCols m={macros} />
-    </div>
-  );
-}
-function MealCard({ meal, log, date, byId, catalog, api }: {
-  meal: Meal; log: MealLog | undefined; date: string; byId: Record<string, Food>; catalog: Food[]; api: ReturnType<typeof useStore>;
-}) {
-  const eaten = new Set(log?.eaten || []);
+function MealBlock({ meal, byId }: { meal: Meal; byId: Record<string, Food> }) {
   let lastGroup: string | undefined;
   return (
     <div className="card">
-      <div className="card-lab"><span className="eyebrow">{meal.name}</span></div>
-      <MacroCols m={mealMacros(meal, log, byId)} head />
+      <div className="card-lab"><span className="eyebrow">{meal.name}</span><span className="tag">{meal.tag}</span></div>
+      <MacroCols m={mealPlanMacros(meal, byId)} head />
       <div className="food-list">
         {meal.foods.map((it) => {
           const f = byId[it.id];
           const gram = f?.grams != null;
-          const step = gram ? 10 : 1;
-          const amt = itemAmount(it, f, log);
+          const amt = itemAmount(it, f, undefined);
+          const label = gram ? `${amt} g` : f?.unit ? `${amt}×` : "";
           const header = it.group && it.group !== lastGroup ? it.group : null;
           lastGroup = it.group;
           return (
             <Fragment key={it.id}>
-              {header && <div className="food-group">{header}</div>}
-              <FoodRow
-                name={f?.name ?? it.id}
-                macros={serving(f, amt)}
-                eaten={eaten.has(it.id)}
-                onClick={() => api.toggleFoodPlanned(date, meal.id, it.id)}
-                amount={gram || f?.unit ? amt : undefined}
-                unitLabel={gram ? " g" : ""}
-                onDec={() => api.setFoodQty(date, meal.id, it.id, amt - step)}
-                onInc={() => api.setFoodQty(date, meal.id, it.id, amt + step)}
-              />
+              {header && <div className="food-group">{header} · elige uno</div>}
+              <div className="food-row">
+                <div className="food-txt">
+                  <span className="food-plan-name">{label && <b className="food-amt-lbl mono">{label}</b>}{f?.name ?? it.id}</span>
+                </div>
+                <MacroCols m={serving(f, amt)} />
+              </div>
             </Fragment>
           );
         })}
-        {(log?.add || []).map((a, idx) => {
-          const f = byId[a.id];
-          const gram = f?.grams != null;
-          const amount = gram || f?.unit;
-          const amt = a.amt ?? (gram ? f!.grams! : 1);
-          const step = gram ? 10 : 1;
-          return (
-            <FoodRow key={"x" + idx} name={f?.name ?? a.id} macros={serving(f, amount ? amt : 1)} eaten extra
-              onClick={() => api.removeFoodExtra(date, meal.id, idx)}
-              amount={amount ? amt : undefined} unitLabel={gram ? " g" : ""}
-              onDec={() => api.setExtraQty(date, meal.id, idx, amt - step)}
-              onInc={() => api.setExtraQty(date, meal.id, idx, amt + step)}
-            />
-          );
-        })}
       </div>
-      <FoodPicker foods={catalog} onAdd={(fid, amt) => api.addFoodExtra(date, meal.id, fid, amt)} onCreate={(n, k) => api.addFoodExtra(date, meal.id, api.addCustomFood(n, k))} />
     </div>
   );
 }
-function FoodView({ api }: { api: ReturnType<typeof useStore> }) {
-  const [day, setDay] = useState<Date>(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
-  const k = iso(day);
-  const byId = foodsById(api.store.customFoods);
-  const catalog = [...FOODS, ...api.store.customFoods];
-  const dayLog = api.store.foodLog[k];
-  const total = dayMacros(dayLog, byId);
-  const isToday = k === iso(new Date());
+function FoodView() {
+  const byId = foodsById();
+  const total = planMacros(byId);
   return (
     <>
-      <div className="weeknav">
-        <button className="navbtn" onClick={() => setDay(addDays(day, -1))} aria-label="Día anterior"><Icon name="left" size={16} /></button>
-        <div><h2 style={{ textTransform: "capitalize" }}>{isToday ? "Hoy" : DOW_LONG[day.getDay()]}</h2><div className="sub mono">{day.getDate()} {MONTHS[day.getMonth()]} {day.getFullYear()}</div></div>
-        <button className="navbtn" onClick={() => setDay(addDays(day, 1))} aria-label="Día siguiente"><Icon name="right" size={16} /></button>
-        <button className="today-btn" onClick={() => { const d = new Date(); d.setHours(0, 0, 0, 0); setDay(d); }}>Hoy</button>
-      </div>
+      <div className="weeknav"><div><h2>Comida</h2><div className="sub">Plan de comidas · macros por bloque</div></div></div>
+      {MEALS.map((m) => <MealBlock key={m.id} meal={m} byId={byId} />)}
       <div className="adh food-total">
         <div className="ring" style={{ background: "var(--accent)" }}><b style={{ color: "var(--accent)" }}><Icon name="food" size={19} /></b></div>
-        <div className="adh-txt"><div className="big mono">Total del día</div><div className="small">marca lo que comas</div></div>
+        <div className="adh-txt"><div className="big mono">Total del plan</div><div className="small">todos los alimentos listados</div></div>
         <MacroCols m={total} head />
       </div>
-      {MEALS.map((m) => <MealCard key={m.id} meal={m} log={dayLog?.[m.id]} date={k} byId={byId} catalog={catalog} api={api} />)}
     </>
   );
 }
@@ -1101,7 +991,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
         {view === "today" && <TodayView store={store} api={api} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} onOpenAct={setOpenAct} />}
         {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} />}
-        {view === "food" && <FoodView api={api} />}
+        {view === "food" && <FoodView />}
       </main>
 
       <nav className="tabbar"><div className="tabbar-in">

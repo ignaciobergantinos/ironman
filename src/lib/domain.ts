@@ -255,6 +255,7 @@ export const FOODS: Food[] = [
   { id: "banana", name: "Banana", kcal: 105, p: 1.3, c: 24, fat: 0.4 },
   { id: "shake_creatina", name: "Batido de proteína + creatina", kcal: 175, p: 30, c: 8, fat: 3 },
   { id: "shake", name: "Batido de proteína", kcal: 150, p: 25, c: 8, fat: 2 },
+  { id: "barra_proteina", name: "Barra de proteína", kcal: 200, p: 20, c: 20, fat: 7, unit: true },
   { id: "huevo", name: "Huevo", kcal: 72, p: 6.3, c: 0.4, fat: 5, unit: true },
   { id: "clara", name: "Clara", kcal: 17, p: 3.6, c: 0.2, fat: 0.1, unit: true },
   { id: "atun", name: "Lata de atún", kcal: 130, p: 28, c: 0, fat: 2 },
@@ -278,7 +279,7 @@ export const MEALS: Meal[] = [
   { id: "pre_am", name: "Pre-entreno · mañana", tag: "Antes de entrenar", foods: [{ id: "banana" }, { id: "shake_creatina" }, { id: "miel" }] },
   { id: "desayuno", name: "Desayuno", tag: "Post-entreno", foods: [{ id: "huevo", qty: 2 }, { id: "clara", qty: 2 }, { id: "atun" }, { id: "galleta_arroz_mani", qty: 5 }] },
   { id: "almuerzo", name: "Almuerzo", tag: "Mediodía", foods: [{ id: "huevo", qty: 3 }, { id: "clara", qty: 3 }, { id: "avena" }, { id: "verduras" }] },
-  { id: "merienda", name: "Merienda · pre-entreno", tag: "Antes de entrenar", foods: [{ id: "banana" }, { id: "shake" }] },
+  { id: "merienda", name: "Merienda · pre-entreno", tag: "Antes de entrenar", foods: [{ id: "banana" }, { id: "shake" }, { id: "barra_proteina" }] },
   {
     id: "cena", name: "Cena", tag: "Noche", foods: [
       { id: "arroz", group: "Carbohidrato" }, { id: "fideos_int", group: "Carbohidrato" }, { id: "batata", group: "Carbohidrato" }, { id: "papa", group: "Carbohidrato" },
@@ -319,6 +320,21 @@ export function mealMacros(meal: Meal, log: MealLog | undefined, byId: Record<st
   for (const it of meal.foods) if (eaten.has(it.id)) m = addMac(m, serving(byId[it.id], itemAmount(it, byId[it.id], log)));
   for (const a of log?.add || []) { const f = byId[a.id]; m = addMac(m, serving(f, a.amt ?? f?.grams ?? 1)); }
   return m;
+}
+// macros del plan de una comida: todos los alimentos a su ración por defecto; en un
+// grupo "elige uno" (p.ej. cena) solo cuenta el primero para no inflar el total.
+export function mealPlanMacros(meal: Meal, byId: Record<string, Food>): Macros {
+  let m = ZERO;
+  const seen = new Set<string>();
+  for (const it of meal.foods) {
+    if (it.group) { if (seen.has(it.group)) continue; seen.add(it.group); }
+    m = addMac(m, serving(byId[it.id], itemAmount(it, byId[it.id], undefined)));
+  }
+  return m;
+}
+// total del plan: suma de todos los bloques (solo los alimentos listados)
+export function planMacros(byId: Record<string, Food>): Macros {
+  return MEALS.reduce((s, m) => addMac(s, mealPlanMacros(m, byId)), ZERO);
 }
 export function dayMacros(day: FoodDay | undefined, byId: Record<string, Food>): Macros {
   return MEALS.reduce((s, m) => addMac(s, mealMacros(m, day?.[m.id], byId)), ZERO);

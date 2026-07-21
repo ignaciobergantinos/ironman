@@ -196,6 +196,8 @@ input,textarea,select{font-family:inherit}
 .food-name{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%;text-align:left}
 .food-name-t{font-weight:700;font-size:13.5px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
 .food-row.done .food-name-t{color:var(--text)}
+.food-plan-name{font-weight:700;font-size:13.5px;letter-spacing:-.01em;color:var(--text)}
+.food-amt-lbl{color:var(--muted);font-weight:800;margin-right:7px;font-size:12.5px}
 .food-row.done .check{background:var(--good);border-color:var(--good);color:#fff}
 .qty{display:flex;align-items:center;gap:9px;margin-left:29px}
 .qty button{width:25px;height:25px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:16px;font-weight:700;display:grid;place-items:center;line-height:1}
