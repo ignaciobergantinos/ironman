@@ -35,6 +35,7 @@ export const ICONS: Record<string, ReactNode> = {
   venture: (<><path d="M12 3c3 2 4.5 5 4.5 8.5L12 16l-4.5-4.5C7.5 8 9 5 12 3z" {...P} /><circle cx="12" cy="10" r="1.8" {...P} /><path d="M9 17l-1.5 4L12 19l4.5 2L15 17" {...P} /></>),
   lang: (<><circle cx="12" cy="12" r="9" {...P} /><path d="M3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9z" {...P} /></>),
   note: (<><path d="M5 4h11l3 3v13a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z" {...P} /><path d="M8 10h8M8 14h5" {...P} /></>),
+  grip: (<><circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none" /><circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none" /><circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none" /><circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none" /></>),
 };
 
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {

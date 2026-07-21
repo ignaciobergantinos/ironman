@@ -228,8 +228,32 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
   store: Store; api: UseStore; onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
 }) {
   const [catOpen, setCatOpen] = useState<string | null>(null);
+  const [drag, setDrag] = useState<{ id: string; over: number | null } | null>(null);
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const k = iso(now);
+  // arrastrar una tarea con el asa hasta otra hora; el destino se resuelve por
+  // la fila bajo el dedo (data-hour). Toque = abrir; arrastre = mover.
+  const hourAt = (x: number, y: number): number | null => {
+    const row = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-hour]");
+    return row ? Number(row.dataset.hour) : null;
+  };
+  const startDrag = (kind: "sess" | "note", id: string) => (e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const move = (ev: PointerEvent) => setDrag({ id, over: hourAt(ev.clientX, ev.clientY) });
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const h = hourAt(ev.clientX, ev.clientY);
+      if (h != null) {
+        const at = `${String(h).padStart(2, "0")}:00`;
+        if (kind === "sess") api.setSessionTime(k, id, at); else api.setNote(k, id, { at });
+      }
+      setDrag(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    setDrag({ id, over: hourAt(e.clientX, e.clientY) });
+  };
   const templ = templSessions(now, mapFor(store, now)), extra = extraSessions(now, store);
   const all = [...templ, ...extra];
   const day = store.agenda[k] || {};
@@ -255,17 +279,13 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
           const hh = String(h).padStart(2, "0");
           const inHour = rows.filter((r) => r.at !== AT_LAST && hourOf(r.at) === h);
           return (
-            <div className={"cal-row" + (inHour.length ? " full" : "")} key={h}>
+            <div className={"cal-row" + (inHour.length ? " full" : "") + (drag && drag.over === h ? " drop" : "")} data-hour={h} key={h}>
               <div className="cal-hour mono">{hh}</div>
               <div className="cal-slot">
                 {inHour.map((r) =>
                   r.kind === "sess" ? (
-                    <div className="cal-item" key={r.s.id}>
-                      <label className="cal-when mono" title="Cambiar hora">
-                        {r.at}
-                        <input type="time" value={r.at}
-                          onChange={(e) => api.setSessionTime(k, r.s.id, e.target.value)} aria-label={`Hora de ${r.s.name}`} />
-                      </label>
+                    <div className={"cal-item" + (drag?.id === r.s.id ? " dragging" : "")} key={r.s.id}>
+                      <span className="cal-grip" onPointerDown={startDrag("sess", r.s.id)} title="Arrastra para cambiar la hora" aria-label="Mover a otra hora"><Icon name="grip" size={15} /></span>
                       <button className={"cal-main" + (store.logs[r.s.id]?.done ? " done" : "")} onClick={() => onOpen(r.s.id)}>
                         <span className="sess-ic" style={{ ["--sc"]: DISC[r.s.disc].color } as React.CSSProperties}><Icon name={r.s.disc} size={16} /></span>
                         <span className="cal-txt">
@@ -277,7 +297,8 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
                       {r.s.kind === "extra" && <button className="ag-del" onClick={() => onDel(r.s.id, k)} aria-label="Eliminar"><Icon name="x" size={12} /></button>}
                     </div>
                   ) : (
-                    <div className={"cal-item" + (catOpen === r.note.id ? " picking" : "")} key={r.note.id}>
+                    <div className={"cal-item" + (catOpen === r.note.id ? " picking" : "") + (drag?.id === r.note.id ? " dragging" : "")} key={r.note.id}>
+                      <span className="cal-grip" onPointerDown={startDrag("note", r.note.id)} title="Arrastra para cambiar la hora" aria-label="Mover a otra hora"><Icon name="grip" size={15} /></span>
                       <button className="cal-cat" style={{ color: NOTE_CATS[r.note.cat ?? DEFAULT_CAT].color }}
                         onClick={() => setCatOpen((c) => (c === r.note.id ? null : r.note.id))}
                         aria-label={`Categoría: ${NOTE_CATS[r.note.cat ?? DEFAULT_CAT].label}`}>
@@ -285,11 +306,6 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
                       </button>
                       <input className="ag-note" value={r.note.text} placeholder="Reunión, almuerzo…" autoFocus={!r.note.text}
                         onChange={(e) => api.setNote(k, r.note.id, { text: e.target.value })} aria-label="Nota" />
-                      <label className="cal-when mono" title="Cambiar hora">
-                        {r.at}
-                        <input type="time" value={r.at}
-                          onChange={(e) => api.setNote(k, r.note.id, { at: e.target.value })} aria-label="Hora de la nota" />
-                      </label>
                       <button className="ag-del" onClick={() => api.delNote(k, r.note.id)} aria-label="Eliminar nota"><Icon name="x" size={12} /></button>
                       {catOpen === r.note.id && (
                         <div className="cat-picker">
