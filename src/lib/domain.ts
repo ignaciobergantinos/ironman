@@ -243,6 +243,112 @@ export function weekMeta(d: Date): { num: number; total: number; phase: string; 
   return { num: i + 1, total: PLAN.length, phase: PLAN[i].phase, recovery: !!PLAN[i].recovery };
 }
 
+/* ---------- plan importado del coach (override) ----------
+   Un plan generado por el coach LLM se pega como JSON, se valida y se guarda como
+   kind 'planoverride' (una entrada por semana, clave = lunes ISO). Cuando existe un
+   override para una semana, sus días sustituyen al PLAN hardcodeado; la reordenación
+   de días (weekmap) se sigue aplicando encima. */
+export type PlanOverride = { monday: string; phase?: string; recovery?: boolean; days: DayDef[] };
+
+export function resolveDayDef(d: Date, map?: WeekMap | null, override?: PlanOverride | null): DayDef {
+  if (!override) return dayDefFor(d, map);
+  const byDow: Record<number, DayDef> = {};
+  for (const day of override.days) byDow[day.dow] = day;
+  // un día que el override no incluye conserva el PLAN por defecto (override parcial seguro)
+  const baseFor = (dow: number): DayDef => byDow[dow] ?? dayDefFor(addDays(d, dow - d.getDay()), null);
+  const real = baseFor(d.getDay());
+  if (isIdentityMap(map)) return real;
+  const src = baseFor(map![d.getDay()]);
+  return { dow: d.getDay(), day: real.day, rest: src.rest, sessions: src.sessions };
+}
+
+// Esquema del JSON de importación (se expone en /api/coach para que el LLM sepa el formato).
+export const PLAN_IMPORT_SCHEMA = {
+  description: "Plan de las próximas semanas. Pégalo en la app (Semana → Importar plan). Solo los días incluidos sustituyen al plan por defecto; los que omitas conservan el plan por defecto de esa fecha. El registro por fecha (lo ya entrenado) se conserva siempre.",
+  shape: {
+    weeks: [
+      {
+        monday: "YYYY-MM-DD (debe ser lunes)",
+        phase: "opcional, p.ej. 'Carga (semana 3/6)'",
+        recovery: "opcional, boolean (semana de descarga)",
+        days: [
+          {
+            dow: "0=domingo … 6=sábado",
+            day: "opcional, nombre visible (Lunes…)",
+            rest: "opcional, boolean; si true, sessions puede ir vacío",
+            sessions: [
+              {
+                slot: "'am' | 'pm'",
+                disc: "'run' | 'swim' | 'bike' | 'gym' | 'walk'",
+                name: "texto",
+                intensity: "'Suave' | 'Medio' | 'Fuerte' | 'Largo'",
+                routine: "opcional, solo gym: 'pull' | 'legs' | 'push'",
+                plan: { tag: "opcional, etiqueta corta", steps: ["líneas de la sesión"] },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+} as const;
+
+const SLOTS = new Set(["am", "pm"]);
+function validSession(s: unknown, ctx: string, errs: string[]): TemplateSession | null {
+  if (typeof s !== "object" || s == null) { errs.push(`${ctx}: sesión no es un objeto`); return null; }
+  const o = s as Record<string, unknown>;
+  if (o.slot != null && !SLOTS.has(String(o.slot))) errs.push(`${ctx}: slot inválido "${o.slot}" (usa am/pm)`);
+  if (!(String(o.disc) in DISC)) { errs.push(`${ctx}: disc inválido "${o.disc}"`); return null; }
+  if (!(String(o.intensity) in INT)) { errs.push(`${ctx}: intensity inválida "${o.intensity}"`); return null; }
+  if (typeof o.name !== "string" || !o.name.trim()) { errs.push(`${ctx}: falta name`); return null; }
+  if (o.routine != null && !(String(o.routine) in ROUTINES)) errs.push(`${ctx}: routine inválida "${o.routine}"`);
+  let plan: PlanStep | undefined;
+  if (o.plan != null) {
+    const p = o.plan as Record<string, unknown>;
+    const steps = Array.isArray(p.steps) ? p.steps.filter((x) => typeof x === "string") as string[] : [];
+    plan = { tag: typeof p.tag === "string" ? p.tag : undefined, steps };
+  }
+  return {
+    slot: (o.slot === "pm" ? "pm" : "am") as Slot,
+    disc: o.disc as Discipline,
+    name: o.name.trim(),
+    intensity: o.intensity as Intensity,
+    routine: o.routine != null && String(o.routine) in ROUTINES ? (o.routine as RoutineKey) : undefined,
+    plan,
+  };
+}
+
+// Valida el JSON pegado. Todo-o-nada: si hay errores, no devuelve overrides.
+export function validatePlanImport(raw: unknown): { overrides: PlanOverride[]; errors: string[] } {
+  const errors: string[] = [];
+  const root = raw as Record<string, unknown> | null;
+  const weeksRaw = Array.isArray(root?.weeks) ? root!.weeks : Array.isArray(raw) ? (raw as unknown[]) : root?.monday ? [raw] : null;
+  if (!weeksRaw) return { overrides: [], errors: ["El JSON debe tener un array 'weeks' (o ser una semana suelta con 'monday')."] };
+  const overrides: PlanOverride[] = [];
+  weeksRaw.forEach((w, wi) => {
+    const o = w as Record<string, unknown>;
+    const monday = String(o.monday ?? "");
+    const ctxW = `semana #${wi + 1} (${monday || "sin fecha"})`;
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(monday) ? new Date(monday + "T00:00:00") : null;
+    if (!d || isNaN(d.getTime())) { errors.push(`${ctxW}: monday no es una fecha YYYY-MM-DD válida`); return; }
+    if (d.getDay() !== 1) errors.push(`${ctxW}: monday debe ser lunes`);
+    const daysRaw = Array.isArray(o.days) ? o.days : null;
+    if (!daysRaw) { errors.push(`${ctxW}: falta el array 'days'`); return; }
+    const days: DayDef[] = [];
+    daysRaw.forEach((dy) => {
+      const dd = dy as Record<string, unknown>;
+      const dow = Number(dd.dow);
+      if (!Number.isInteger(dow) || dow < 0 || dow > 6) { errors.push(`${ctxW}: dow inválido "${dd.dow}"`); return; }
+      const rest = !!dd.rest;
+      const sessRaw = Array.isArray(dd.sessions) ? dd.sessions : [];
+      const sessions = sessRaw.map((s, si) => validSession(s, `${ctxW} ${DOW_LONG[dow]} sesión ${si + 1}`, errors)).filter(Boolean) as TemplateSession[];
+      days.push({ dow, day: typeof dd.day === "string" ? dd.day : DOW_LONG[dow], rest, sessions });
+    });
+    overrides.push({ monday: iso(d), phase: typeof o.phase === "string" ? o.phase : undefined, recovery: !!o.recovery, days });
+  });
+  return { overrides: errors.length ? [] : overrides, errors };
+}
+
 /* ---------- alimentación diaria (casi siempre lo mismo) ----------
    Catálogo de alimentos (kcal por ración/unidad) + comidas planificadas que
    los referencian por id. `unit` = alimento contable (kcal por unidad), con un

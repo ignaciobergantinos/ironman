@@ -8,9 +8,9 @@ import { Icon } from "@/lib/icons";
 import { composeStatsImage, shareImage, downloadImage, type OverlayStat } from "@/lib/share-image";
 import { coachAdvice, TIPS, TIP_CAT } from "@/lib/coach";
 import {
-  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, planMacros, dayDefFor, weekMeta, DOW_LONG, MONTHS,
+  DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, planMacros, resolveDayDef, weekMeta, validatePlanImport, DOW_LONG, MONTHS,
   iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, RACE, weeksToRace, weekTarget, NOTE_CATS, DEFAULT_CAT,
-  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap, type AgendaNote, type NoteCat,
+  type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap, type PlanOverride, type AgendaNote, type NoteCat,
 } from "@/lib/domain";
 
 /* ---------- pure helpers ---------- */
@@ -18,8 +18,12 @@ import {
 function mapFor(store: Store, date: Date): WeekMap | undefined {
   return store.weekmap[iso(mondayOf(date))];
 }
-function templSessions(date: Date, map?: WeekMap | null): Session[] {
-  const def = dayDefFor(date, map);
+// override del plan (importado del coach) para la semana que contiene `date`, si existe
+function overrideFor(store: Store, date: Date): PlanOverride | undefined {
+  return store.planOverrides[iso(mondayOf(date))];
+}
+function templSessions(date: Date, store: Store): Session[] {
+  const def = resolveDayDef(date, mapFor(store, date), overrideFor(store, date));
   return (def ? def.sessions : []).map((s) => ({ ...s, id: iso(date) + ":" + s.slot, kind: "templ" as const, date: iso(date) }));
 }
 function extraSessions(date: Date, store: Store): Session[] {
@@ -28,7 +32,7 @@ function extraSessions(date: Date, store: Store): Session[] {
 }
 function findSession(id: string, store: Store): Session | null {
   const d = new Date(id.split(":")[0] + "T00:00:00");
-  const t = templSessions(d, mapFor(store, d)).find((s) => s.id === id);
+  const t = templSessions(d, store).find((s) => s.id === id);
   if (t) return t;
   return extraSessions(d, store).find((s) => s.id === id) ?? null;
 }
@@ -38,7 +42,7 @@ function weekVolume(mon: Date, store: Store): Vol {
   const v: Vol = { run: 0, bike: 0, swim: 0, walk: 0, gymDone: 0, done: 0, total: 0, secs: 0 };
   for (let i = 0; i < 7; i++) {
     const d = addDays(mon, i);
-    [...templSessions(d, mapFor(store, d)), ...extraSessions(d, store)].forEach((s) => {
+    [...templSessions(d, store), ...extraSessions(d, store)].forEach((s) => {
       v.total++;
       const l = store.logs[s.id];
       const dn = !!(l && l.done);
@@ -99,15 +103,18 @@ function AddExtra({ dateK, onAdd }: { dateK: string; onAdd: (disc: Discipline, d
 }
 
 /* ---------- week view ---------- */
-function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, onSwap, onResetWeek }: {
+function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, onSwap, onResetWeek, onImportPlan, onDelPlan }: {
   cursor: Date; setCursor: (d: Date) => void; store: Store; todayISO: string;
   onOpen: (id: string) => void; onAdd: (d: Discipline, k: string) => void; onDel: (id: string, k: string) => void;
   onSwap: (mon: string, a: number, b: number) => void; onResetWeek: (mon: string) => void;
+  onImportPlan: (o: PlanOverride[]) => void; onDelPlan: (mon: string) => void;
 }) {
   const start = cursor, end = addDays(start, 6);
   const mon = iso(start);
   const map = store.weekmap[mon];
+  const override = overrideFor(store, start);
   const [editing, setEditing] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [pick, setPick] = useState<number | null>(null);
   const sameMonth = start.getMonth() === end.getMonth();
   const title = sameMonth ? `${start.getDate()}–${end.getDate()} ${MONTHS[end.getMonth()]} ${end.getFullYear()}` : `${fmtDate(start)} – ${fmtDate(end)}`;
@@ -115,7 +122,7 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, on
   const mini: { n: number; done: number }[] = [];
   for (let i = 0; i < 7; i++) {
     const d = addDays(start, i);
-    const ss = [...templSessions(d, map), ...extraSessions(d, store)];
+    const ss = [...templSessions(d, store), ...extraSessions(d, store)];
     let dd = 0;
     ss.forEach((s) => { total++; if (store.logs[s.id]?.done) { done++; dd++; } });
     mini.push({ n: ss.length, done: dd });
@@ -132,7 +139,7 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, on
     <>
       <div className="weeknav">
         <button className="navbtn" onClick={() => setCursor(addDays(cursor, -7))} aria-label="Semana anterior"><Icon name="left" size={16} /></button>
-        <div><h2>{title}</h2><div className="sub mono">{wm ? `Semana ${wm.num}/${wm.total} · ${wm.phase}${wm.recovery ? " 🌙" : ""}` : "Fuera del plan"}</div></div>
+        <div><h2>{title}</h2><div className="sub mono">{wm ? `Semana ${wm.num}/${wm.total} · ${wm.phase}${wm.recovery ? " 🌙" : ""}` : override ? `${override.phase ?? "Plan importado"}${override.recovery ? " 🌙" : ""}` : "Fuera del plan"}</div></div>
         <button className="navbtn" onClick={() => setCursor(addDays(cursor, 7))} aria-label="Semana siguiente"><Icon name="right" size={16} /></button>
         <button className="today-btn" onClick={() => setCursor(mondayOf(new Date()))}>Hoy</button>
       </div>
@@ -140,6 +147,10 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, on
         <div className="ring" style={{ background: `conic-gradient(var(--accent) ${pct}%, var(--surface-3) 0)` }}><b>{pct}%</b></div>
         <div className="adh-txt"><div className="big mono">{done} / {total} sesiones</div><div className="small">completadas esta semana</div></div>
         <div className="miniweek">{mini.map((m, idx) => Array.from({ length: Math.max(m.n, 1) }).map((_, i) => <i key={idx + "-" + i} className={i < m.done ? "on" : ""} />))}</div>
+      </div>
+      <div className="weekedit">
+        <button className="weekedit-btn" onClick={() => setImportOpen(true)}><Icon name="download" size={14} /> Importar plan</button>
+        {override && <><span className="weekedit-hint">Plan importado</span><button className="weekedit-reset" onClick={() => onDelPlan(mon)}>Quitar plan</button></>}
       </div>
       {wm && (
         <div className="weekedit">
@@ -152,11 +163,11 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, on
       )}
       <div className="days">
         {Array.from({ length: 7 }).map((_, i) => {
-          const d = addDays(start, i), k = iso(d), def = dayDefFor(d, map);
+          const d = addDays(start, i), k = iso(d), def = resolveDayDef(d, map, override);
           const dow = d.getDay();
           const srcDow = map ? map[dow] : dow;
           const isToday = k === todayISO;
-          const templ = templSessions(d, map), extra = extraSessions(d, store);
+          const templ = templSessions(d, store), extra = extraSessions(d, store);
           return (
             <div key={k} className={"day" + (isToday ? " today" : "") + (editing ? " editing" : "") + (pick === dow ? " picked" : "")}>
               <div className="day-h" {...(editing ? { role: "button", tabIndex: 0, onClick: () => tapDay(dow), style: { cursor: "pointer" } } : {})}>
@@ -192,7 +203,52 @@ function WeekView({ cursor, setCursor, store, todayISO, onOpen, onAdd, onDel, on
           );
         })}
       </div>
+      {importOpen && <ImportPlanSheet defMonday={mon} onImport={(o) => { onImportPlan(o); setImportOpen(false); }} onClose={() => setImportOpen(false)} />}
     </>
+  );
+}
+
+/* ---------- importar plan del coach ---------- */
+function ImportPlanSheet({ defMonday, onImport, onClose }: { defMonday: string; onImport: (o: PlanOverride[]) => void; onClose: () => void }) {
+  const { dragProps, sheetStyle } = useSheetDrag(onClose);
+  const [text, setText] = useState("");
+  const [errors, setErrors] = useState<string[]>([]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, [onClose]);
+  const doImport = () => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch (e) { setErrors(["JSON no válido: " + (e as Error).message]); return; }
+    const { overrides, errors } = validatePlanImport(parsed);
+    if (errors.length) { setErrors(errors); return; }
+    onImport(overrides);
+  };
+  const weeks = (() => { try { const p = validatePlanImport(JSON.parse(text)); return p.errors.length ? 0 : p.overrides.length; } catch { return 0; } })();
+  return (
+    <div className="overlay open" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="sheet" style={sheetStyle}>
+        <button className="sheet-close" onClick={onClose} aria-label="Cerrar"><Icon name="x" size={16} /></button>
+        <div className="grab-zone" {...dragProps}><div className="grab" /></div>
+        <div className="sheet-scroll">
+          <div className="sheet-hero">
+            <span className="sess-ic" style={{ background: "var(--accent)" }}><Icon name="download" size={25} /></span>
+            <div style={{ minWidth: 0 }}><h3>Importar plan</h3><div className="meta"><span>Pega el JSON que generó el coach</span></div></div>
+          </div>
+          <div className="card">
+            <div className="card-lab"><span className="eyebrow">Plan en JSON</span></div>
+            <textarea className="notes" style={{ minHeight: 200, fontFamily: "var(--mono)", fontSize: 12 }} placeholder={`{ "weeks": [ { "monday": "${defMonday}", "days": [ … ] } ] }`} value={text} onChange={(e) => { setText(e.target.value); setErrors([]); }} />
+            {errors.length > 0 && (
+              <div className="plan-errs">{errors.slice(0, 12).map((er, i) => <div key={i} className="plan-err">· {er}</div>)}</div>
+            )}
+            <p style={{ margin: "10px 0 0", color: "var(--faint)", fontSize: 12 }}>El formato exacto está en <b className="mono">/api/coach</b> (campo <b className="mono">importSchema</b>). Sustituye el plan por defecto solo en las semanas incluidas; el registro por fecha se conserva.</p>
+          </div>
+          <button className="donebig on" onClick={doImport} disabled={!text.trim()}>Importar {weeks ? `· ${weeks} ${weeks === 1 ? "semana" : "semanas"}` : ""}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -254,7 +310,7 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
     window.addEventListener("pointerup", up);
     setDrag({ id, over: hourAt(e.clientX, e.clientY) });
   };
-  const templ = templSessions(now, mapFor(store, now)), extra = extraSessions(now, store);
+  const templ = templSessions(now, store), extra = extraSessions(now, store);
   const all = [...templ, ...extra];
   const day = store.agenda[k] || {};
   const times = day.times || {};
@@ -1102,7 +1158,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
     for (const a of byTime) {
       if (store.imported[a.id]) continue;
       const d = new Date(a.date + "T00:00:00");
-      const sessions = [...templSessions(d, mapFor(store, d)), ...extraSessions(d, store)];
+      const sessions = [...templSessions(d, store), ...extraSessions(d, store)];
       const seat = sessions.find((sn) => sn.disc === a.disc && !claimed.has(sn.id) && !sn.id.includes(":icu-"));
       // el gimnasio se registra por series, pero su duración sí interesa (cuenta en las horas)
       const log: LogData = { ...actToLog(a, a.disc), done: true };
@@ -1132,7 +1188,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
       </header>
 
       <main className={"wrap" + (view === "today" || view === "activity" ? " fill" : "")}>
-        {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} onSwap={(m, a, b) => { api.swapDays(m, a, b); flash("Días cambiados"); }} onResetWeek={(m) => { api.resetWeek(m); flash("Semana restablecida"); }} />}
+        {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} onSwap={(m, a, b) => { api.swapDays(m, a, b); flash("Días cambiados"); }} onResetWeek={(m) => { api.resetWeek(m); flash("Semana restablecida"); }} onImportPlan={(o) => { api.importPlan(o); flash(`Plan importado · ${o.length} ${o.length === 1 ? "semana" : "semanas"}`); }} onDelPlan={(m) => { void api.delPlanOverride(m); flash("Plan quitado"); }} />}
         {view === "today" && <TodayView store={store} api={api} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} onOpenAct={setOpenAct} />}
         {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} />}

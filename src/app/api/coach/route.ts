@@ -3,19 +3,21 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   DISC,
   MEALS,
+  PLAN_IMPORT_SCHEMA,
   RACE,
   ROUTINES,
   addDays,
-  dayDefFor,
   derive,
   iso,
   mondayOf,
   parseTime,
+  resolveDayDef,
   weekMeta,
   weekTarget,
   weeksToRace,
   type Discipline,
   type LogData,
+  type PlanOverride,
   type WeekMap,
 } from "@/lib/domain";
 
@@ -138,12 +140,14 @@ export async function GET(request: NextRequest) {
   const logs = new Map<string, LogData>();
   const extras: { key: string; d: Record<string, unknown> }[] = [];
   const weekmaps = new Map<string, WeekMap>();
+  const overrides = new Map<string, PlanOverride>();
   const foodDays = new Map<string, Record<string, { eaten?: string[] }>>();
 
   for (const r of rows) {
     if (r.kind === "log") logs.set(r.entry_key, r.data as LogData);
     else if (r.kind === "extra") extras.push({ key: r.entry_key, d: r.data });
     else if (r.kind === "weekmap") weekmaps.set(r.entry_key.slice(5), (r.data.map as WeekMap) ?? []);
+    else if (r.kind === "planoverride") overrides.set(r.entry_key.slice(5), r.data as PlanOverride);
     else if (r.kind === "foodday") foodDays.set(r.entry_key.slice(5), r.data as Record<string, { eaten?: string[] }>);
   }
 
@@ -165,6 +169,7 @@ export async function GET(request: NextRequest) {
   for (let w = 0; w < back + 1; w++) {
     const monday = addDays(firstMonday, w * 7);
     const map = weekmaps.get(iso(monday));
+    const override = overrides.get(iso(monday));
     const meta = weekMeta(monday);
     const target = weekTarget(monday);
     const totals = zero();
@@ -176,7 +181,7 @@ export async function GET(request: NextRequest) {
       const date = addDays(monday, i);
       const dISO = iso(date);
 
-      for (const s of dayDefFor(date, map).sessions) {
+      for (const s of resolveDayDef(date, map, override).sessions) {
         const id = `${dISO}:${s.slot}`;
         const log = logs.get(id) ?? {};
         plannedCount++;
@@ -213,8 +218,9 @@ export async function GET(request: NextRequest) {
       monday: iso(monday),
       status: isFuture ? "upcoming" : monday.getTime() === mondayOf(today).getTime() ? "current" : "past",
       weeksToRace: weeksToRace(monday),
-      phase: meta ? `${meta.phase} (semana ${meta.num}/${meta.total})` : null,
-      recovery: meta?.recovery ?? false,
+      phase: meta ? `${meta.phase} (semana ${meta.num}/${meta.total})` : override?.phase ?? null,
+      recovery: meta?.recovery ?? override?.recovery ?? false,
+      planSource: override ? "override" : "default",
       target,
       actual: {
         runKm: +totals.runKm.toFixed(1),
@@ -246,6 +252,8 @@ export async function GET(request: NextRequest) {
     },
     race: { name: RACE.name, date: iso(RACE.date), weeksToRace: weeksToRace(today) },
     today: iso(today),
+    // formato para devolver un plan a la app (Semana → Importar plan). Genera este objeto y pégalo allí.
+    importSchema: PLAN_IMPORT_SCHEMA,
     nutrition: {
       meals: MEALS.map((m) => ({ id: m.id, name: m.name, tag: m.tag })),
       loggedDays: [...foodDays.keys()].sort().slice(-14),
