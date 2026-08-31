@@ -50,7 +50,7 @@ export default function LoginPage() {
       <div className="login-card">
         <div className="login-logo"><span className="login-mark"><Icon name="mdot" size={30} /></span><h1 className="logo">Tría</h1></div>
         <div className="rail" />
-        <p className="tag">Tu registro de entreno rumbo al Ironman. Entra con Google y tus datos te siguen a cualquier dispositivo.</p>
+        <p className="tag">Tu registro de entreno rumbo al maratón. Entra con Google y tus datos te siguen a cualquier dispositivo.</p>
 
         <button className="google" onClick={google} type="button" disabled={busy}>
           <GoogleG /> {busy ? "Conectando…" : "Continuar con Google"}

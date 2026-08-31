@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tría · Camino al Ironman",
-  description: "Registro de entrenamiento triatlón — 12 sesiones/semana.",
+  title: "Tría · Camino al Maratón",
+  description: "Registro de entrenamiento para el maratón — carrera con natación y bici de apoyo.",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Tría" },
 };
 

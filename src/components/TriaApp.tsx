@@ -1179,7 +1179,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
       <div className="spectrum" />
       <header className="appbar">
         <div className="appbar-in">
-          <div className="brand"><span className="brand-mark"><Icon name="mdot" size={23} /></span><div className="brand-txt"><b>Tría</b><span>{email || "Camino al Ironman"}</span></div></div>
+          <div className="brand"><span className="brand-mark"><Icon name="mdot" size={23} /></span><div className="brand-txt"><b>Tría</b><span>{email || "Camino al Maratón"}</span></div></div>
           <div className={"syncbadge " + api.sync}><span className="dot" />{SYNC_LABEL[api.sync]}</div>
           <button className="iconbtn" onClick={toggleTheme} title="Cambiar tema" aria-label="Cambiar tema"><Icon name={theme === "dark" ? "sun" : "moon"} /></button>
           <button className="iconbtn" onClick={exportData} title="Exportar datos" aria-label="Exportar datos"><Icon name="down" /></button>
