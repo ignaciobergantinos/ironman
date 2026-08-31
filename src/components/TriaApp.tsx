@@ -9,7 +9,7 @@ import { composeStatsImage, shareImage, downloadImage, type OverlayStat } from "
 import { coachAdvice, TIPS, TIP_CAT } from "@/lib/coach";
 import {
   DISC, INT, ROUTINES, FIELDS, MEALS, FOODS, foodsById, serving, itemAmount, mealMacros, dayMacros, planMacros, resolveDayDef, weekMeta, validatePlanImport, DOW_LONG, MONTHS,
-  iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, RACE, weeksToRace, weekTarget, NOTE_CATS, DEFAULT_CAT,
+  iso, mondayOf, addDays, fmtDate, derive, hasData, parseTime, AT_LAST, raceAfter, weeksToRace, weekTarget, NOTE_CATS, DEFAULT_CAT,
   type Discipline, type Session, type LogData, type Food, type Meal, type MealLog, type Macros, type WeekMap, type PlanOverride, type AgendaNote, type NoteCat,
 } from "@/lib/domain";
 
@@ -391,8 +391,91 @@ function TodayView({ store, api, onOpen, onAdd, onDel }: {
   );
 }
 
+/* ---------- peso corporal ----------
+   Un pesaje por día. La media móvil de 7 es la línea que importa: el peso diario se mueve
+   ±1 kg por sal, hidratación y glucógeno, así que un mínimo suelto no es progreso. */
+const dayGap = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+
+function WeightCard({ store, api }: { store: Store; api: UseStore }) {
+  const todayK = iso(new Date());
+  const saved = store.weights[todayK];
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (saved != null ? String(saved).replace(".", ",") : "");
+
+  function save() {
+    if (draft == null) return;
+    const t = draft.trim();
+    const n = parseFloat(t.replace(",", "."));
+    api.setWeight(todayK, t === "" || !Number.isFinite(n) ? null : Math.round(n * 100) / 100);
+    setDraft(null);
+  }
+
+  const all = Object.keys(store.weights).sort();
+  const from = iso(addDays(new Date(todayK + "T00:00:00"), -89));
+  const win = all.filter((d) => d >= from);
+
+  let body = null;
+  if (win.length >= 2) {
+    const span = Math.max(1, dayGap(win[0], todayK));
+    const vals = win.map((d) => store.weights[d]);
+    const lo = Math.min(...vals) - 0.4, hi = Math.max(...vals) + 0.4;
+    const W = 320, H = 108, PL = 4, PB = 2;
+    const X = (d: string) => PL + (dayGap(win[0], d) / span) * (W - PL * 2);
+    const Y = (v: number) => 4 + ((hi - v) / (hi - lo)) * (H - 4 - PB);
+
+    // media móvil de 7 días naturales
+    const mm = win.map((d) => {
+      const w = win.filter((o) => dayGap(o, d) >= 0 && dayGap(o, d) <= 6).map((o) => store.weights[o]);
+      return { d, v: w.reduce((a, b) => a + b, 0) / w.length };
+    });
+    const line = mm.map((p, i) => `${i ? "L" : "M"}${X(p.d).toFixed(1)},${Y(p.v).toFixed(1)}`).join("");
+
+    const cur = store.weights[win[win.length - 1]];
+    const min = Math.min(...vals);
+    const ref = win.find((d) => dayGap(d, todayK) <= 30) ?? win[0];
+    const d30 = cur - store.weights[ref];
+
+    body = (
+      <>
+        <div className="wt-k">
+          <div className="wt-kv"><b className="mono">{cur.toFixed(1)}</b><i>actual</i></div>
+          <div className="wt-kv"><b className="mono" style={{ color: "var(--race)" }}>{min.toFixed(1)}</b><i>mínimo</i></div>
+          <div className="wt-kv"><b className="mono" style={{ color: d30 <= 0 ? "var(--accent)" : "var(--warn)" }}>{d30 > 0 ? "+" : "−"}{Math.abs(d30).toFixed(1)}</b><i>30 días</i></div>
+        </div>
+        <svg className="wt-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Peso corporal: ${cur.toFixed(1)} kg, mínimo ${min.toFixed(1)} kg`}>
+          <path d={`${line}L${X(mm[mm.length - 1].d).toFixed(1)},${H}L${X(mm[0].d).toFixed(1)},${H}Z`} fill="var(--accent)" opacity=".13" />
+          <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          {win.map((d) => <circle key={d} cx={X(d)} cy={Y(store.weights[d])} r={store.weights[d] === min ? 3 : 1.9} fill={store.weights[d] === min ? "var(--race)" : "var(--muted)"} opacity={store.weights[d] === min ? 1 : 0.55} />)}
+        </svg>
+        <div className="wt-x mono"><span>{fmtDate(new Date(win[0] + "T00:00:00"))}</span><span>{win.length} pesajes</span><span>hoy</span></div>
+      </>
+    );
+  } else {
+    body = <div className="wt-empty">Anotá el peso unos días seguidos y aparece la curva.</div>;
+  }
+
+  return (
+    <div className="wt">
+      <div className="wt-h">
+        <h4>Peso</h4>
+        <div className="wt-in">
+          <input
+            className="mono" inputMode="decimal" placeholder="—" value={shown}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+            aria-label="Peso de hoy en kilos"
+          />
+          <span>kg</span>
+        </div>
+      </div>
+      {body}
+    </div>
+  );
+}
+
 /* ---------- progress view ---------- */
-function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (d: Date) => void; store: Store }) {
+function ProgressView({ cursor, setCursor, store, api }: { cursor: Date; setCursor: (d: Date) => void; store: Store; api: UseStore }) {
   const mon = mondayOf(cursor);
   const end = addDays(mon, 6);
   const sameMonth = mon.getMonth() === end.getMonth();
@@ -401,6 +484,7 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
   const hours = v.secs / 3600;
   const target = weekTarget(mon);
   const left = weeksToRace(mon);
+  const race = raceAfter(mon);
   const pctDone = v.total ? Math.round((v.done / v.total) * 100) : 0;
   const tiles: { k: Discipline; lab: string; val: string | number; u: string; accent?: boolean }[] = [
     { k: "run", lab: "Carrera", val: v.run.toFixed(1), u: "km" },
@@ -435,8 +519,8 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
         <div className="goal">
           <div className="goal-h">
             <div>
-              <div className="goal-race"><Icon name="today" size={14} /> {RACE.name} · {RACE.date.getDate()} {MONTHS[RACE.date.getMonth()]} {RACE.date.getFullYear()}</div>
-              <div className="goal-left mono">{left === 0 ? "¡Es esta semana!" : left === 1 ? "Falta 1 semana" : `Faltan ${left} semanas`}</div>
+              <div className="goal-race"><Icon name="today" size={14} /> {race.name} · {race.date.getDate()} {MONTHS[race.date.getMonth()]} {race.date.getFullYear()}</div>
+              <div className="goal-left mono">{left === 0 ? "¡Es esta semana!" : left === 1 ? "Falta 1 semana" : `Faltan ${left} semanas`}{race.goal ? ` · ${race.goal}` : ""}</div>
             </div>
             <span className="goal-tag">{target.note}</span>
           </div>
@@ -464,6 +548,7 @@ function ProgressView({ cursor, setCursor, store }: { cursor: Date; setCursor: (
           );
         })}
       </div>
+      <WeightCard store={store} api={api} />
       <div className="trend">
         <h4>Constancia · 8 semanas</h4><div className="cap">Sesiones completadas por semana</div>
         <div className="bars">
@@ -1191,7 +1276,7 @@ export default function TriaApp({ userId, email }: { userId: string; email: stri
         {view === "week" && <WeekView cursor={cursor} setCursor={setCursor} store={store} todayISO={todayISO} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} onSwap={(m, a, b) => { api.swapDays(m, a, b); flash("Días cambiados"); }} onResetWeek={(m) => { api.resetWeek(m); flash("Semana restablecida"); }} onImportPlan={(o) => { api.importPlan(o); flash(`Plan importado · ${o.length} ${o.length === 1 ? "semana" : "semanas"}`); }} onDelPlan={(m) => { void api.delPlanOverride(m); flash("Plan quitado"); }} />}
         {view === "today" && <TodayView store={store} api={api} onOpen={setOpenId} onAdd={(dk, k) => setOpenId(api.addExtra(dk, k))} onDel={(id, k) => { if (confirm("¿Eliminar esta sesión y sus datos?")) { void api.delExtra(id, k); flash("Eliminada"); } }} />}
         {view === "activity" && <ActivityView anchor={new Date(todayISO + "T00:00:00")} todayISO={todayISO} onOpenAct={setOpenAct} />}
-        {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} />}
+        {view === "progress" && <ProgressView cursor={cursor} setCursor={setCursor} store={store} api={api} />}
         {view === "food" && <FoodView api={api} />}
       </main>
 

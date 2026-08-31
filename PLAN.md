@@ -123,12 +123,12 @@ Seis mañanas de entrenamiento, un día completo libre. **Ninguna sesión pasa d
 | **Lunes** | Gym 1 · Espalda horizontal + bíceps (55') | Natación · técnica (45') |
 | **Martes** | Running · calidad / pasadas (55') | Bici Z2 regenerativa (40') · opcional |
 | **Miércoles** | Gym 2 · Piernas + core (55') | Natación · aeróbico (45') |
-| **Jueves** | Running · Z2 fácil (50') | Descanso o caminata |
+| **Jueves** | Running · Z2 fácil (50') | Natación · suelto (40') |
 | **Viernes** | Gym 3 · Empuje + hombro + brazos (55') | Bici Z2 (45') |
 | **Sábado** | Running · tirada larga (60–100') | Libre |
 | **Domingo** | Descanso total | — |
 
-Reparto: 3 gimnasio (1 de piernas), 3 running, 2 natación, 2 bici.
+Reparto: 3 gimnasio (1 de piernas), 3 running, 3 natación, 2 bici.
 
 ### Por qué está ordenada así
 

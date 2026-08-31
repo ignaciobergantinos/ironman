@@ -45,7 +45,10 @@ export const INT: Record<Intensity, { c: string }> = {
   Largo: { c: "var(--long)" },
 };
 
-export type RoutineKey = "pull" | "legs" | "push";
+/* `pull`/`legs`/`push` son las rutinas del bloque viejo (jul–ago 2026). Los logs de gimnasio
+   guardan las series por índice de ejercicio, así que renumerarlas rompería el histórico: se
+   quedan como están y las rutinas nuevas viven en claves propias. */
+export type RoutineKey = "pull" | "legs" | "push" | "espalda" | "piernas" | "empuje";
 export type Exercise = { n: string; s: number; r: string };
 export const ROUTINES: Record<RoutineKey, { label: string; ex: Exercise[] }> = {
   pull: {
@@ -73,6 +76,38 @@ export const ROUTINES: Record<RoutineKey, { label: string; ex: Exercise[] }> = {
       { n: "Press de hombros", s: 4, r: "10" },
       { n: "Mariposa", s: 3, r: "12" },
       { n: "Vuelos laterales", s: 3, r: "15" },
+    ],
+  },
+  // El tirón horizontal es el déficit principal: trapecio medio, romboides y hombro posterior.
+  espalda: {
+    label: "Espalda + bíceps",
+    ex: [
+      { n: "Remo con barra", s: 4, r: "6-8" },
+      { n: "Remo unilateral", s: 3, r: "10-12" },
+      { n: "Face pull", s: 3, r: "15-20" },
+      { n: "Pájaros inclinado", s: 3, r: "15" },
+      { n: "Curl inclinado", s: 3, r: "10-12" },
+    ],
+  },
+  // Sentadilla para sostener fuerza; el resto cubre isquios, glúteo medio y sóleo.
+  piernas: {
+    label: "Piernas + core",
+    ex: [
+      { n: "Sentadilla", s: 4, r: "5" },
+      { n: "Peso muerto rumano", s: 3, r: "8" },
+      { n: "Búlgara", s: 3, r: "10/p" },
+      { n: "Gemelo sentado", s: 3, r: "15" },
+      { n: "Pallof press", s: 3, r: "30-40”" },
+    ],
+  },
+  empuje: {
+    label: "Empuje + brazos",
+    ex: [
+      { n: "Press inclinado", s: 4, r: "6-8" },
+      { n: "Dominadas", s: 3, r: "máx" },
+      { n: "Elevaciones laterales", s: 4, r: "15-20" },
+      { n: "Fondos", s: 3, r: "8" },
+      { n: "Curl martillo", s: 3, r: "12" },
     ],
   },
 };
@@ -211,17 +246,317 @@ function buildWeek(p: WeekParams): Record<number, DayDef> {
 
 const BUILT = PLAN.map(buildWeek);
 
-// Semana del plan (0..5) o null si la fecha cae fuera del bloque de 6 semanas.
+/* ---------- plan híbrido · sep 2026 → dic 2027 ----------
+   Seis mañanas: 3 de gimnasio (una de piernas) y 3 de correr. Las tardes son natación —
+   prioritaria porque no le cobra nada al tren inferior— y bici. Ninguna sesión pasa de 60'.
+   Piernas va el miércoles: es el único hueco a tres días del largo del sábado y a uno de la
+   calidad del martes. El déficit de espalda va el lunes, con el cuerpo descansado. */
+
+export type HybridWeek = {
+  runKm: number;
+  hours: number;
+  note: string;
+  long: string; // duración o distancia del largo del sábado
+  quality: PlanStep; // la única sesión dura de correr de la semana
+  deload?: boolean;
+};
+
+const SWIM_TEC: PlanStep = {
+  tag: "Técnica",
+  steps: ["300 m calentamiento", "6×50 m técnica (20’’ desc)", "400–600 m continuo suave", "100 m suelto"],
+};
+const SWIM_AER: PlanStep = {
+  tag: "Aeróbico",
+  steps: ["300 m calentamiento", "800–1000 m continuo (o 2×400 m)", "100 m suelto · sin ahogo (asma)"],
+};
+const SWIM_SUAVE: PlanStep = { tag: "Suelto · opcional", steps: ["600–800 m suelto", "Respiración bilateral"] };
+const BIKE_REG: PlanStep = {
+  tag: "Regenerativa",
+  steps: ["40’ en Z2 bajo", "Cadencia 85–95 rpm", "Resistencia baja: es recuperación, no entreno"],
+};
+const BIKE_Z2: PlanStep = { tag: "Z2", steps: ["45’ continuos en Z2", "Cadencia 85–95 rpm"] };
+
+function easyRun(km: number): PlanStep {
+  return {
+    tag: "Z2 · 7:45–8:00/km",
+    steps: [`${km} km a 7:45–8:00/km · cinta a 7,5 km/h`, "FC por debajo de 140", "Fácil de verdad: es el día que sostiene el resto"],
+  };
+}
+function longRunH(dur: string): PlanStep {
+  return { tag: `${dur} · 7:00–7:30/km`, steps: [`${dur} a 7:00–7:30/km · cinta a 8,0–8,6 km/h`, "FC 140–148", "Hidratación cada 20–25’"] };
+}
+
+function buildHybrid(w: HybridWeek): Record<number, DayDef> {
+  const days: DayDef[] = [
+    {
+      dow: 1,
+      day: "Lunes",
+      sessions: [
+        { slot: "am", disc: "gym", name: "Gimnasio · espalda + bíceps", intensity: "Medio", routine: "espalda" },
+        { slot: "pm", disc: "swim", name: "Natación · técnica", intensity: "Suave", plan: SWIM_TEC },
+      ],
+    },
+    {
+      dow: 2,
+      day: "Martes",
+      sessions: [
+        { slot: "am", disc: "run", name: "Carrera · calidad", intensity: w.deload ? "Medio" : "Fuerte", plan: w.quality },
+        { slot: "pm", disc: "bike", name: "Bici · regenerativa", intensity: "Suave", plan: BIKE_REG },
+      ],
+    },
+    {
+      dow: 3,
+      day: "Miércoles",
+      sessions: [
+        { slot: "am", disc: "gym", name: "Gimnasio · piernas + core", intensity: w.deload ? "Medio" : "Fuerte", routine: "piernas" },
+        { slot: "pm", disc: "swim", name: "Natación · aeróbico", intensity: "Suave", plan: SWIM_AER },
+      ],
+    },
+    {
+      dow: 4,
+      day: "Jueves",
+      sessions: [
+        { slot: "am", disc: "run", name: "Rodaje suave", intensity: "Suave", plan: easyRun(Math.round(w.runKm * 0.18)) },
+        { slot: "pm", disc: "swim", name: "Natación · suelto", intensity: "Suave", plan: SWIM_SUAVE },
+      ],
+    },
+    {
+      dow: 5,
+      day: "Viernes",
+      sessions: [
+        { slot: "am", disc: "gym", name: "Gimnasio · empuje + brazos", intensity: "Medio", routine: "empuje" },
+        { slot: "pm", disc: "bike", name: "Bici · Z2", intensity: "Suave", plan: BIKE_Z2 },
+      ],
+    },
+    {
+      dow: 6,
+      day: "Sábado",
+      sessions: [{ slot: "am", disc: "run", name: "Tirada larga", intensity: "Largo", plan: longRunH(w.long) }],
+    },
+    { dow: 0, day: "Domingo", rest: true, sessions: [] },
+  ];
+  const map: Record<number, DayDef> = {};
+  days.forEach((d) => (map[d.dow] = d));
+  return map;
+}
+
+/* Las pasadas se introducen en orden: mecánica → VO2 corto → VO2 largo → umbral. Saltarse la
+   primera fase hace que las series se corran con zancada de rodaje y no sirvan de nada. */
+const Q_RECTAS: PlanStep = {
+  tag: "Rectas · mecánica",
+  steps: ["15’ de rodaje suave", "8 × 20’’ rápido con 90’’ de trote", "No es cardio: es enseñarle a las piernas a moverse", "10’ suelto"],
+};
+const Q400 = (n: number, pace: string): PlanStep => ({
+  tag: `${n}×400 m · ${pace}`,
+  steps: ["15’ calentamiento + 4 rectas", `${n} × 400 m a ${pace} con 90’’ de trote`, "10’ vuelta a la calma"],
+});
+const Q800 = (n: number, pace: string): PlanStep => ({
+  tag: `${n}×800 m · ${pace}`,
+  steps: ["15’ calentamiento + 4 rectas", `${n} × 800 m a ${pace} con 2’ de trote`, "10’ vuelta a la calma"],
+});
+const Q1000 = (n: number, pace: string): PlanStep => ({
+  tag: `${n}×1000 m · ${pace}`,
+  steps: ["15’ calentamiento + 4 rectas", `${n} × 1000 m a ${pace} con 2’ de trote`, "10’ vuelta a la calma"],
+});
+const QTEMPO = (min: string, pace: string): PlanStep => ({
+  tag: `Tempo · ${min}`,
+  steps: ["15’ calentamiento", `${min} continuos a ${pace} · FC 158–165`, "10’ vuelta a la calma"],
+});
+
+// Progresión de volumen: nunca más de 10% semanal y descarga cada cuarta semana.
+function ramp(from: number, to: number, n: number, q: (i: number) => PlanStep, longs: string[]): HybridWeek[] {
+  return Array.from({ length: n }, (_, i) => {
+    const deload = i > 0 && (i + 1) % 4 === 0;
+    const base = from + ((to - from) * i) / Math.max(1, n - 1);
+    const runKm = Math.round(deload ? base * 0.7 : base);
+    return {
+      runKm,
+      hours: Math.round((runKm / 8 + 4.5) * 2) / 2,
+      note: deload ? "Descarga" : "Carga",
+      long: longs[i % longs.length],
+      quality: q(i),
+      deload,
+    };
+  });
+}
+
+export type Block = {
+  key: string;
+  name: string;
+  start: string; // lunes ISO
+  weeks: HybridWeek[];
+  kind: "hibrido" | "maraton" | "off";
+};
+
+/* Los bloques alternan quién manda. Subir volumen de correr y ganar músculo al mismo tiempo no
+   funciona: en 2, 5 y 8 el objetivo es el gimnasio; en 4, 6 y 7 es correr. */
+export const BLOCKS: Block[] = [
+  { key: "maraton", name: "Maratón · afinamiento", start: "2026-08-24", kind: "maraton", weeks: [
+    { runKm: 30, hours: 4.5, note: "Transición", long: "—", quality: easyRun(6) },
+    { runKm: 45, hours: 6, note: "Última carga", long: "26–28 km", quality: easyRun(8) },
+    { runKm: 32, hours: 4.5, note: "Descarga", long: "16 km", quality: QTEMPO("3 km", "6:45/km"), deload: true },
+    { runKm: 15, hours: 3, note: "Afinamiento", long: "Maratón", quality: Q400(4, "6:00/km"), deload: true },
+  ] },
+  { key: "recup", name: "Recuperación", start: "2026-09-21", kind: "off", weeks: [
+    { runKm: 0, hours: 2.5, note: "Sin correr", long: "—", quality: easyRun(0) },
+    { runKm: 10, hours: 3.5, note: "Trote día por medio", long: "—", quality: easyRun(4) },
+    { runKm: 16, hours: 4.5, note: "Vuelta a la rutina", long: "8 km", quality: easyRun(5) },
+  ] },
+  { key: "recon", name: "Reconstrucción + déficits", start: "2026-10-12", kind: "hibrido",
+    weeks: ramp(20, 32, 10, (i) => (i < 3 ? Q_RECTAS : Q400(6 + Math.min(4, i - 3), "5:30/km")),
+      ["70’", "80’", "85’", "60’"]) },
+  { key: "fiestas", name: "Fiestas", start: "2026-12-21", kind: "off", weeks: [
+    { runKm: 12, hours: 2, note: "Descanso real", long: "—", quality: easyRun(5) },
+    { runKm: 12, hours: 2, note: "Descanso real", long: "—", quality: easyRun(5) },
+  ] },
+  { key: "base", name: "Base + fuerza", start: "2027-01-04", kind: "hibrido",
+    weeks: ramp(30, 38, 8, (i) => (i < 4 ? Q400(10, "5:20/km") : Q800(5, "5:35/km")),
+      ["80’", "90’", "95’", "65’"]) },
+  { key: "vel1", name: "Velocidad 10k", start: "2027-03-01", kind: "hibrido",
+    weeks: ramp(35, 42, 8, (i) => (i < 4 ? Q800(6, "5:25/km") : Q1000(5, "5:15/km")),
+      ["85’", "95’", "100’", "70’"]) },
+  { key: "hiper", name: "Hipertrofia prioritaria", start: "2027-04-26", kind: "hibrido",
+    weeks: Array.from({ length: 8 }, () => ({
+      runKm: 28, hours: 5.5, note: "Gimnasio manda · superávit +300 kcal",
+      long: "70’", quality: easyRun(8), deload: true,
+    })) },
+  { key: "media", name: "Medio maratón", start: "2027-06-21", kind: "hibrido",
+    weeks: ramp(38, 50, 8, (i) => (i < 4 ? Q1000(5, "5:10/km") : QTEMPO("25’", "5:20/km")),
+      ["100’", "110’", "120’", "75’"]) },
+  { key: "vel2", name: "Velocidad 10k II", start: "2027-08-16", kind: "hibrido",
+    weeks: ramp(35, 45, 8, (i) => (i < 4 ? Q1000(6, "4:55/km") : QTEMPO("30’", "5:05/km")),
+      ["85’", "95’", "100’", "70’"]) },
+  { key: "defin", name: "Definición + test", start: "2027-10-11", kind: "hibrido",
+    weeks: ramp(35, 40, 10, (i) => (i % 2 ? QTEMPO("30’", "4:55/km") : Q1000(6, "4:45/km")),
+      ["85’", "90’", "95’", "65’"]) },
+];
+
+/* Las tres semanas hasta el maratón son a medida: se corre para terminarlo entero, no para
+   marcar tiempo. Con 21,6 km como tirada más larga, lo único que queda por construir es llegar. */
+const TAPER: Record<number, DayDef>[] = [
+  // semana de transición: el bloque viejo terminó el 23 de agosto y el afinamiento arranca el 31
+  wk([
+    { dow: 1, day: "Lunes", s: [run("Rodaje suave", "Suave", easyRun(6))] },
+    { dow: 2, day: "Martes", s: [g("espalda", "Gimnasio · espalda + bíceps"), sw("Natación · suelta", SWIM_SUAVE)] },
+    { dow: 3, day: "Miércoles", s: [run("Rodaje suave", "Suave", easyRun(6))] },
+    { dow: 4, day: "Jueves", s: [g("piernas", "Gimnasio · piernas + core"), sw("Natación · aeróbico", SWIM_AER)] },
+    { dow: 5, day: "Viernes", s: [] },
+    { dow: 6, day: "Sábado", s: [run("Rodaje largo", "Largo", longRunH("12 km"))] },
+    { dow: 0, day: "Domingo", s: [walkS("40’")] },
+  ]),
+  wk([
+    { dow: 1, day: "Lunes", s: [g("espalda", "Gimnasio · completo"), sw("Natación · suelta", SWIM_SUAVE)] },
+    { dow: 2, day: "Martes", s: [run("Rodaje suave", "Suave", easyRun(8))] },
+    { dow: 3, day: "Miércoles", s: [sw("Natación · aeróbico", SWIM_AER)] },
+    { dow: 4, day: "Jueves", s: [run("Rodaje suave", "Suave", easyRun(6))] },
+    { dow: 5, day: "Viernes", s: [] },
+    { dow: 6, day: "Sábado", s: [run("Ensayo de maratón", "Largo", {
+      tag: "26–28 km · 7:00/km",
+      steps: ["Correr 9’ / caminar 1’ desde el km 1", "7:00/km, ni un segundo más rápido", "Probá desayuno, ropa y geles: es el ensayo", "Es la sesión que decide la carrera"] })] },
+    { dow: 0, day: "Domingo", s: [walkS("40’")] },
+  ]),
+  wk([
+    { dow: 1, day: "Lunes", s: [g("espalda", "Gimnasio · ligero"), sw("Natación · suelta", SWIM_SUAVE)] },
+    { dow: 2, day: "Martes", s: [run("Rodaje suave", "Suave", easyRun(6))] },
+    { dow: 3, day: "Miércoles", s: [sw("Natación · aeróbico", SWIM_AER)] },
+    { dow: 4, day: "Jueves", s: [run("Rodaje con ritmo", "Medio", {
+      tag: "8 km · 3 km a 6:45", steps: ["2,5 km suaves", "3 km a 6:45/km", "2,5 km suaves"] })] },
+    { dow: 5, day: "Viernes", s: [] },
+    { dow: 6, day: "Sábado", s: [run("Largo corto", "Largo", longRunH("16 km"))] },
+    { dow: 0, day: "Domingo", s: [walkS("30’")] },
+  ]),
+  wk([
+    { dow: 1, day: "Lunes", s: [run("Rodaje flojo", "Suave", easyRun(5))] },
+    { dow: 2, day: "Martes", s: [] },
+    { dow: 3, day: "Miércoles", s: [run("Activación", "Medio", {
+      tag: "5 km · 4×400", steps: ["2 km suaves", "4 × 400 m a 6:00/km con 2’ de trote", "1 km suelto"] })] },
+    { dow: 4, day: "Jueves", s: [] },
+    { dow: 5, day: "Viernes", s: [run("Trote de piernas", "Suave", { tag: "3 km flojo", steps: ["3 km muy suaves", "Nada nuevo: ni comida, ni ropa, ni zapatillas"] })] },
+    { dow: 6, day: "Sábado", s: [] },
+    { dow: 0, day: "Domingo", s: [run("MARATÓN", "Largo", {
+      tag: "42,195 km · 5:00–5:30",
+      steps: ["Correr 9’ / caminar 1’ desde el km 1, no desde el cansancio", "Arrancar a 7:00/km aunque sobren piernas", "Hidratar cada 20–25’ sin excepción", "Si en el km 32 estás bien, ahí soltás"] })] },
+  ]),
+];
+
+/* helpers de los días a medida del taper */
+function wk(rows: { dow: number; day: string; s: TemplateSession[] }[]): Record<number, DayDef> {
+  const m: Record<number, DayDef> = {};
+  rows.forEach((r) => (m[r.dow] = { dow: r.dow, day: r.day, rest: r.s.length === 0, sessions: r.s }));
+  return m;
+}
+function g(routine: RoutineKey, name: string): TemplateSession {
+  return { slot: "am", disc: "gym", name, intensity: "Medio", routine };
+}
+function run(name: string, intensity: Intensity, plan: PlanStep): TemplateSession {
+  return { slot: "am", disc: "run", name, intensity, plan };
+}
+function sw(name: string, plan: PlanStep): TemplateSession {
+  return { slot: "pm", disc: "swim", name, intensity: "Suave", plan };
+}
+function walkS(dur: string): TemplateSession {
+  return { slot: "am", disc: "walk", name: "Caminata", intensity: "Suave", plan: { tag: dur, steps: [`${dur} a 5 km/h`, "Recuperación activa"] } };
+}
+
+/* Semana blanda: recuperación post-maratón y fiestas. El volumen de correr se reparte en tres
+   troteos; con runKm 0 no se corre nada, que es lo que toca la semana siguiente al maratón. */
+function buildOff(w: HybridWeek): Record<number, DayDef> {
+  const km = Math.round(w.runKm / 3);
+  const jog = (name: string) => (km > 0 ? [run(name, "Suave", easyRun(km))] : []);
+  return wk([
+    { dow: 1, day: "Lunes", s: [walkS("40’")] },
+    { dow: 2, day: "Martes", s: [...jog("Trote suelto"), sw("Natación · suelta", SWIM_SUAVE)] },
+    { dow: 3, day: "Miércoles", s: km > 0 ? [g("espalda", "Gimnasio · correctivo")] : [walkS("40’")] },
+    { dow: 4, day: "Jueves", s: [...jog("Trote suelto"), sw("Natación · suelta", SWIM_SUAVE)] },
+    { dow: 5, day: "Viernes", s: [walkS("40’")] },
+    { dow: 6, day: "Sábado", s: jog("Rodaje suave") },
+    { dow: 0, day: "Domingo", s: [] },
+  ]);
+}
+
+const HYBRID_CACHE = new Map<string, Record<number, DayDef>>();
+
+export type BlockPos = { block: Block; week: number; days: Record<number, DayDef> };
+
+// Bloque y semana (0-based) a los que pertenece una fecha, o null si cae fuera del plan.
+export function blockAt(d: Date): BlockPos | null {
+  const mon = mondayOf(d).getTime();
+  for (const b of BLOCKS) {
+    const s = mondayOf(new Date(b.start + "T00:00:00")).getTime();
+    const w = Math.round((mon - s) / (7 * 86400000));
+    if (w < 0 || w >= b.weeks.length) continue;
+    let days: Record<number, DayDef>;
+    if (b.kind === "maraton") days = TAPER[w];
+    else {
+      const ck = `${b.key}:${w}`;
+      days = HYBRID_CACHE.get(ck) ?? (b.kind === "off" ? buildOff(b.weeks[w]) : buildHybrid(b.weeks[w]));
+      HYBRID_CACHE.set(ck, days);
+    }
+    return { block: b, week: w, days };
+  }
+  return null;
+}
+
+// Semana del plan viejo (0..5) o null. Se conserva para que jul–ago 2026 siga resolviendo igual.
 export function planWeekIndex(d: Date): number | null {
   const start = mondayOf(PLAN_START).getTime();
   const mon = mondayOf(d).getTime();
   const wk = Math.floor(Math.round((mon - start) / 86400000) / 7);
   return wk >= 0 && wk < PLAN.length ? wk : null;
 }
-export function dayDef(d: Date): DayDef {
+
+// Los 7 días de la semana que contiene `d`: primero los bloques nuevos, después el plan viejo.
+function builtWeekFor(d: Date): Record<number, DayDef> | null {
+  const pos = blockAt(d);
+  if (pos) return pos.days;
   const i = planWeekIndex(d);
-  if (i == null) return { dow: d.getDay(), day: DOW_LONG[d.getDay()], rest: true, sessions: [] };
-  return BUILT[i][d.getDay()];
+  return i == null ? null : BUILT[i];
+}
+
+export function dayDef(d: Date): DayDef {
+  const wkDays = builtWeekFor(d);
+  if (!wkDays) return { dow: d.getDay(), day: DOW_LONG[d.getDay()], rest: true, sessions: [] };
+  return wkDays[d.getDay()];
 }
 // Reordenar días de una semana concreta: `map` (indexado por dow, 0=dom..6=sáb) da el dow de
 // origen cuyo plan se muestra en cada día natural. El nombre y la fecha del día siguen siendo los
@@ -231,13 +566,18 @@ export function isIdentityMap(m?: WeekMap | null): boolean {
   return !m || m.every((v, i) => v === i);
 }
 export function dayDefFor(d: Date, map?: WeekMap | null): DayDef {
-  const i = planWeekIndex(d);
-  if (i == null || isIdentityMap(map)) return dayDef(d);
-  const real = BUILT[i][d.getDay()];
-  const src = BUILT[i][map![d.getDay()]];
+  const wkDays = builtWeekFor(d);
+  if (!wkDays || isIdentityMap(map)) return dayDef(d);
+  const real = wkDays[d.getDay()];
+  const src = wkDays[map![d.getDay()]];
   return { dow: real.dow, day: real.day, rest: src.rest, sessions: src.sessions };
 }
 export function weekMeta(d: Date): { num: number; total: number; phase: string; recovery: boolean } | null {
+  const pos = blockAt(d);
+  if (pos) {
+    const w = pos.block.weeks[pos.week];
+    return { num: pos.week + 1, total: pos.block.weeks.length, phase: pos.block.name, recovery: !!w.deload || pos.block.kind === "off" };
+  }
   const i = planWeekIndex(d);
   if (i == null) return null;
   return { num: i + 1, total: PLAN.length, phase: PLAN[i].phase, recovery: !!PLAN[i].recovery };
@@ -447,11 +787,28 @@ export function dayMacros(day: FoodDay | undefined, byId: Record<string, Food>):
 }
 
 /* ---------- carrera objetivo y volumen semanal recomendado ---------- */
-export const RACE = { name: "Maratón", date: new Date(2026, 8, 20) }; // domingo 20 sep 2026
+/* Cada bloque de calidad termina en una carrera objetivo. La escala de 10k es progresiva: los
+   4:00/km son alcanzables, pero exigen 60–80 km semanales y un físico más liviano que el que
+   busca este plan. Sub-45 a fin de 2027 es el techo realista de un plan híbrido. */
+export const RACES: { name: string; date: Date; goal?: string }[] = [
+  { name: "Maratón", date: new Date(2026, 8, 20), goal: "Terminarlo · 5:00–5:30" },
+  { name: "10k · test", date: new Date(2026, 11, 20), goal: "Sub-57 · 5:42/km" },
+  { name: "10k", date: new Date(2027, 1, 28), goal: "Sub-55 · 5:30/km" },
+  { name: "10k", date: new Date(2027, 3, 25), goal: "Sub-52 · 5:12/km" },
+  { name: "Medio maratón", date: new Date(2027, 7, 15), goal: "Sub-2:05" },
+  { name: "10k", date: new Date(2027, 9, 10), goal: "Sub-48 · 4:48/km" },
+  { name: "10k · test final", date: new Date(2027, 11, 19), goal: "Sub-45 · 4:30/km" },
+];
+
+// La carrera objetivo es la próxima que no pasó; si ya pasaron todas, la última.
+export function raceAfter(d: Date): { name: string; date: Date; goal?: string } {
+  return RACES.find((r) => mondayOf(r.date).getTime() >= mondayOf(d).getTime()) ?? RACES[RACES.length - 1];
+}
+export const RACE = raceAfter(new Date());
 
 // semanas completas que faltan para la carrera (0 = semana de la carrera, negativo = ya pasó)
 export function weeksToRace(d: Date): number {
-  return Math.round((mondayOf(RACE.date).getTime() - mondayOf(d).getTime()) / (7 * 86400000));
+  return Math.round((mondayOf(raceAfter(d).date).getTime() - mondayOf(d).getTime()) / (7 * 86400000));
 }
 
 // Objetivo orientativo por semana, indexado por semanas que faltan. La forma es la clásica de
@@ -475,8 +832,13 @@ const TARGETS: WeekTarget[] = [
 const TARGET_BASE: WeekTarget = { runKm: 34, hours: 5.5, note: "Base" };
 
 export function weekTarget(d: Date): WeekTarget | null {
+  const pos = blockAt(d);
+  if (pos) {
+    const w = pos.block.weeks[pos.week];
+    return { runKm: w.runKm, hours: w.hours, note: w.note };
+  }
   const w = weeksToRace(d);
-  if (w < 0) return null; // la carrera ya pasó: sin objetivo
+  if (w < 0) return null; // fuera del plan y sin carrera por delante
   return TARGETS[w] ?? TARGET_BASE;
 }
 
