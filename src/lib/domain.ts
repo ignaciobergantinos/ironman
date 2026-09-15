@@ -391,19 +391,16 @@ export type Block = {
 /* Los bloques alternan quién manda. Subir volumen de correr y ganar músculo al mismo tiempo no
    funciona: en 2, 5 y 8 el objetivo es el gimnasio; en 4, 6 y 7 es correr. */
 export const BLOCKS: Block[] = [
+  /* El maratón del 20 de septiembre se canceló el 14: el bloque queda truncado a las tres
+     semanas ya entrenadas (para que el histórico siga resolviendo) y, sin carrera que
+     recuperar, la reconstrucción arranca directamente el 14 con 4 semanas de regalo. */
   { key: "maraton", name: "Maratón · afinamiento", start: "2026-08-24", kind: "maraton", weeks: [
     { runKm: 30, hours: 4.5, note: "Transición", long: "—", quality: easyRun(6) },
     { runKm: 45, hours: 6, note: "Última carga", long: "26–28 km", quality: easyRun(8) },
     { runKm: 32, hours: 4.5, note: "Descarga", long: "16 km", quality: QTEMPO("3 km", "6:45/km"), deload: true },
-    { runKm: 15, hours: 3, note: "Afinamiento", long: "Maratón", quality: Q400(4, "6:00/km"), deload: true },
   ] },
-  { key: "recup", name: "Recuperación", start: "2026-09-21", kind: "off", weeks: [
-    { runKm: 0, hours: 2.5, note: "Sin correr", long: "—", quality: easyRun(0) },
-    { runKm: 10, hours: 3.5, note: "Trote día por medio", long: "—", quality: easyRun(4) },
-    { runKm: 16, hours: 4.5, note: "Vuelta a la rutina", long: "8 km", quality: easyRun(5) },
-  ] },
-  { key: "recon", name: "Reconstrucción + déficits", start: "2026-10-12", kind: "hibrido",
-    weeks: ramp(20, 32, 10, (i) => (i < 3 ? Q_RECTAS : Q400(6 + Math.min(4, i - 3), "5:30/km")),
+  { key: "recon", name: "Reconstrucción + déficits", start: "2026-09-14", kind: "hibrido",
+    weeks: ramp(20, 32, 14, (i) => (i < 3 ? Q_RECTAS : Q400(6 + Math.min(4, i - 3), "5:30/km")),
       ["70’", "80’", "85’", "60’"]) },
   { key: "fiestas", name: "Fiestas", start: "2026-12-21", kind: "off", weeks: [
     { runKm: 12, hours: 2, note: "Descanso real", long: "—", quality: easyRun(5) },
@@ -431,8 +428,8 @@ export const BLOCKS: Block[] = [
       ["85’", "90’", "95’", "65’"]) },
 ];
 
-/* Las tres semanas hasta el maratón son a medida: se corre para terminarlo entero, no para
-   marcar tiempo. Con 21,6 km como tirada más larga, lo único que queda por construir es llegar. */
+/* Las semanas del taper eran a medida. El maratón se canceló el 14 de septiembre: quedan las
+   tres ya entrenadas (24 ago – 13 sep) para que el histórico siga mostrando lo que se hizo. */
 const TAPER: Record<number, DayDef>[] = [
   // semana de transición: el bloque viejo terminó el 23 de agosto y el afinamiento arranca el 31
   wk([
@@ -464,18 +461,6 @@ const TAPER: Record<number, DayDef>[] = [
     { dow: 5, day: "Viernes", s: [] },
     { dow: 6, day: "Sábado", s: [run("Largo corto", "Largo", longRunH("16 km"))] },
     { dow: 0, day: "Domingo", s: [walkS("30’")] },
-  ]),
-  wk([
-    { dow: 1, day: "Lunes", s: [run("Rodaje flojo", "Suave", easyRun(5))] },
-    { dow: 2, day: "Martes", s: [] },
-    { dow: 3, day: "Miércoles", s: [run("Activación", "Medio", {
-      tag: "5 km · 4×400", steps: ["2 km suaves", "4 × 400 m a 6:00/km con 2’ de trote", "1 km suelto"] })] },
-    { dow: 4, day: "Jueves", s: [] },
-    { dow: 5, day: "Viernes", s: [run("Trote de piernas", "Suave", { tag: "3 km flojo", steps: ["3 km muy suaves", "Nada nuevo: ni comida, ni ropa, ni zapatillas"] })] },
-    { dow: 6, day: "Sábado", s: [] },
-    { dow: 0, day: "Domingo", s: [run("MARATÓN", "Largo", {
-      tag: "42,195 km · 5:00–5:30",
-      steps: ["Correr 9’ / caminar 1’ desde el km 1, no desde el cansancio", "Arrancar a 7:00/km aunque sobren piernas", "Hidratar cada 20–25’ sin excepción", "Si en el km 32 estás bien, ahí soltás"] })] },
   ]),
 ];
 
@@ -791,7 +776,6 @@ export function dayMacros(day: FoodDay | undefined, byId: Record<string, Food>):
    4:00/km son alcanzables, pero exigen 60–80 km semanales y un físico más liviano que el que
    busca este plan. Sub-45 a fin de 2027 es el techo realista de un plan híbrido. */
 export const RACES: { name: string; date: Date; goal?: string }[] = [
-  { name: "Maratón", date: new Date(2026, 8, 20), goal: "Terminarlo · 5:00–5:30" },
   { name: "10k · test", date: new Date(2026, 11, 20), goal: "Sub-57 · 5:42/km" },
   { name: "10k", date: new Date(2027, 1, 28), goal: "Sub-55 · 5:30/km" },
   { name: "10k", date: new Date(2027, 3, 25), goal: "Sub-52 · 5:12/km" },

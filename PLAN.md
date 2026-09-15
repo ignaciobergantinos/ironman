@@ -76,6 +76,12 @@ adherencia. Lo que sí faltaba de verdad: **face pull, pájaros y press inclinad
 
 ## 2. Bloque 0 — Maratón del 20 de septiembre (3 semanas)
 
+> **Actualización 14 sep 2026: el maratón no se corre.** Se cancelan la semana de afinamiento
+> y el Bloque 1 de recuperación —sin carrera no hay daño muscular que recuperar—. Las cuatro
+> semanas liberadas van al Bloque 2, que arranca hoy mismo (14 sep) y pasa de 10 a 14 semanas,
+> terminando igual en el test de 10k del 20 de diciembre. Lo entrenado del 24 ago al 13 sep
+> queda en el histórico tal cual se hizo. El resto de esta sección se conserva como registro.
+
 Esto va primero porque ya está encima y no se puede reprogramar.
 
 ### Realidad del maratón
@@ -114,7 +120,7 @@ Notas del bloque:
 
 ---
 
-## 3. La semana tipo (desde octubre)
+## 3. La semana tipo (desde el 14 de septiembre)
 
 Seis mañanas de entrenamiento, un día completo libre. **Ninguna sesión pasa de 60 minutos.**
 
@@ -287,12 +293,12 @@ sub-55 es **10,9 km/h**, sub-50 es **12,0 km/h**, sub-45 es **13,3 km/h**.
 
 No todas las pasadas hacen lo mismo y el orden importa. Se introducen así:
 
-**Fase A — mecánica (oct–nov 2026).** Rectas en progresión: 6-8 × 20 segundos rápido con
+**Fase A — mecánica (sep–oct 2026).** Rectas en progresión: 6-8 × 20 segundos rápido con
 90 segundos de trote entre medio, al final de un rodaje fácil. No es entrenamiento
 cardiovascular, es enseñarle a las piernas a moverse rápido después de meses a 8:00/km.
 Sin esto, las pasadas de verdad se corren con zancada de rodaje y no sirven.
 
-**Fase B — VO2 corto (dic 2026 – feb 2027).** 6-8 × 400 m a 5:30/km, 90" de recuperación
+**Fase B — VO2 corto (oct 2026 – feb 2027).** 6-8 × 400 m a 5:30/km, 90" de recuperación
 trotando. Subir a 10 × 400 m antes de cambiar el ritmo.
 
 **Fase C — VO2 largo (mar–may 2027).** 5-6 × 800 m a 5:40/km, 2' de recuperación. Después
@@ -310,9 +316,8 @@ la gente que entrena híbrido, porque el gimnasio ya aporta su propia carga.
 
 | # | período | sem | foco | volumen correr | gimnasio | meta |
 |---|---|---|---|---|---|---|
-| **0** | 31 ago – 20 sep 26 | 3 | Taper maratón | 30 → 15 km | mantenimiento | Terminar el maratón entero |
-| **1** | 21 sep – 11 oct 26 | 3 | Recuperación | 0 → 15 km | suave, correctivo | Volver sin lesión |
-| **2** | 12 oct – 20 dic 26 | 10 | Reconstrucción + déficits | 20 → 32 km | **prioridad alta** | 10k sub-57 |
+| **0** | 31 ago – 13 sep 26 | 2 | Taper maratón (cancelado el 14 sep) | 30 → 32 km | mantenimiento | — |
+| **2** | 14 sep – 20 dic 26 | 14 | Reconstrucción + déficits | 20 → 32 km | **prioridad alta** | 10k sub-57 |
 | — | 21 dic – 3 ene 27 | 2 | Fiestas | libre | libre | Descanso real |
 | **3** | 4 ene – 28 feb 27 | 8 | Base + fuerza | 30 → 38 km | alta | 10k sub-55 |
 | **4** | 1 mar – 25 abr 27 | 8 | Velocidad 10k | 35 → 42 km | mantenimiento | **10k sub-52** |
@@ -328,12 +333,11 @@ alternan cuál manda. En los bloques 2, 5 y 8 el gimnasio es el objetivo y corre
 En los bloques 4, 6 y 7 es al revés. Intentar los dos a la vez todo el año es la receta para
 no progresar en ninguno — que es más o menos lo que venía pasando.
 
-**Bloque 1 · recuperación post-maratón.** Tres semanas sin correr rápido. Primera semana: nada
-o caminatas. Segunda: trote suave día por medio. Tercera: vuelta a la rutina. El maratón deja
-daño muscular que tarda más en irse de lo que se siente. Es también el momento ideal para
-empezar el trabajo correctivo con el cuerpo descansado.
+**Bloque 1 · eliminado.** Existía para absorber el daño muscular del maratón. Sin maratón no
+hay nada que recuperar: se viene de dos semanas de taper (descarga, en la práctica) y se puede
+entrar al Bloque 2 directo. Sus tres semanas y la de afinamiento pasan al Bloque 2.
 
-**Bloque 2 · el más importante del plan.** Diez semanas donde el gimnasio manda y correr se
+**Bloque 2 · el más importante del plan.** Catorce semanas donde el gimnasio manda y correr se
 reconstruye desde abajo pero bien: 80% fácil de verdad. Acá se instala la semana tipo, se
 instalan las cargas nuevas de remo, face pull y laterales, y se hace la Fase A de pasadas.
 Las ganancias de músculo en zonas nunca entrenadas son rápidas los primeros 3-4 meses — el
@@ -354,7 +358,7 @@ que recomienda el `analisis-fisico.md` y el que hace que el resultado se vea.
 Regla: **no subir más del 10% semanal, y bajar un 30% cada cuarta semana.** Con tu historial
 de 17 km/semana, cualquier salto brusco a 40 km termina en periostitis o fascitis.
 
-Ejemplo del bloque 2 (10 semanas): 20 · 22 · 24 · **17** · 26 · 28 · 30 · **21** · 32 · **24**
+Bloque 2 (14 semanas): 20 · 21 · 22 · **16** · 24 · 25 · 26 · **19** · 27 · 28 · 29 · **21** · 31 · 32
 
 Las semanas en negrita son de descarga y no son opcionales.
 
@@ -398,8 +402,8 @@ manera de saber de dónde partís. Vale la pena registrar dos semanas seguidas a
 
 Si de todo este documento hubiera que quedarse con seis cosas:
 
-1. **El maratón del 20 de septiembre se corre para terminarlo**, con correr/caminar desde el
-   km 1. 5:00-5:30. No es el objetivo del año, es un trámite que hay que pasar entero.
+1. **El maratón se canceló** (14 sep). El Bloque 2 arranca el 14 de septiembre con 14 semanas
+   en vez de 10; el resto del calendario no se mueve.
 2. **Los días fáciles tienen que ser fáciles.** 8:00/km en cinta, FC bajo 140. Es la corrección
    que más rendimiento te va a dar y la que más va a costar aceptar.
 3. **Una sola sesión de calidad por semana**, los martes, y en el orden A → B → C → D.
